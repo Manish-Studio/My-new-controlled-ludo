@@ -1,0 +1,6 @@
+{
+  "name": "Ludo King",
+  "description": "Ludo King board game with multiplayer, computer AI, 76 grid coordinates, animated dice and tokens.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
