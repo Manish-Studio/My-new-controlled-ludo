@@ -202,6 +202,20 @@ public class LudoGameBridge {
      * Enforces active-box validation, duplicate-rejection, and immediate ACK/ERROR responses.
      */
     public boolean handleNumberSelection(@Nullable String clientId, @NonNull LudoProtocolMessage message) {
+        if (com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected()) {
+            Log.w(TAG, "Rejected NUMBER_SELECTION: Player Cheating Selection is active on host.");
+            String reqId = message.getRequestId();
+            if (reqId == null || reqId.trim().isEmpty()) reqId = "req_blocked";
+            LudoProtocolMessage errMsg = LudoProtocolMessage.createError(
+                    reqId,
+                    "CONTROLLER_BLOCKED",
+                    "Controller number selection is disabled while Player Cheating is active",
+                    message.getBoxId(),
+                    message.getChannel() != null ? message.getChannel() : 1
+            );
+            sendDirectOrBroadcast(clientId, errMsg);
+            return false;
+        }
         String reqId = message.getRequestId();
         if (reqId == null || reqId.trim().isEmpty()) {
             reqId = "req_" + System.currentTimeMillis();

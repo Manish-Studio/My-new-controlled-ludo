@@ -573,6 +573,42 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
             networkSettingsBtn.setOnClickListener(openNetworkListener);
         }
 
+        // Setup Player Cheating Selection checkboxes
+        android.widget.CheckBox cheatRed = findViewById(R.id.cheat_cb_red);
+        android.widget.CheckBox cheatGreen = findViewById(R.id.cheat_cb_green);
+        android.widget.CheckBox cheatYellow = findViewById(R.id.cheat_cb_yellow);
+        android.widget.CheckBox cheatBlue = findViewById(R.id.cheat_cb_blue);
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatManager = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+
+        if (cheatRed != null) {
+            cheatRed.setChecked(cheatManager.isPlayerSelected("red"));
+            cheatRed.setOnCheckedChangeListener((btn, isChecked) -> {
+                cheatManager.setPlayerSelected("red", isChecked);
+                handleCheatingSelectionChanged();
+            });
+        }
+        if (cheatGreen != null) {
+            cheatGreen.setChecked(cheatManager.isPlayerSelected("green"));
+            cheatGreen.setOnCheckedChangeListener((btn, isChecked) -> {
+                cheatManager.setPlayerSelected("green", isChecked);
+                handleCheatingSelectionChanged();
+            });
+        }
+        if (cheatYellow != null) {
+            cheatYellow.setChecked(cheatManager.isPlayerSelected("yellow"));
+            cheatYellow.setOnCheckedChangeListener((btn, isChecked) -> {
+                cheatManager.setPlayerSelected("yellow", isChecked);
+                handleCheatingSelectionChanged();
+            });
+        }
+        if (cheatBlue != null) {
+            cheatBlue.setChecked(cheatManager.isPlayerSelected("blue"));
+            cheatBlue.setOnCheckedChangeListener((btn, isChecked) -> {
+                cheatManager.setPlayerSelected("blue", isChecked);
+                handleCheatingSelectionChanged();
+            });
+        }
+
         stgssharebtn.setOnClickListener(noInternetOnClick);stgslikebtn.setOnClickListener(noInternetOnClick);stgsgeturpverifiedbtn.setOnClickListener(noInternetOnClick);stgsplaybtn.setOnClickListener(noInternetOnClick);stgslanguagebtn.setOnClickListener(noInternetOnClick);stgsselectbtn.setOnClickListener(noInternetOnClick);stgsviewbtn1.setOnClickListener(noInternetOnClick);stgsfaqbtn.setOnClickListener(noInternetOnClick);stgscomposebtn.setOnClickListener(noInternetOnClick);stgsrulesbtn.setOnClickListener(noInternetOnClick);stgsviewbtn2.setOnClickListener(noInternetOnClick);stgsmoregamesbtn.setOnClickListener(noInternetOnClick);stgslboardbtn.setOnClickListener(noInternetOnClick);stgsviewbtn3.setOnClickListener(noInternetOnClick);stgseditbtn.setOnClickListener(noInternetOnClick);stgsinfobtn.setOnClickListener(openNetworkListener);stgsdelaccountbtn.setOnClickListener(noInternetOnClick);stgsfbbtn.setOnClickListener(noInternetOnClick);stgsinstabtn.setOnClickListener(noInternetOnClick);stgstwitterbtn.setOnClickListener(noInternetOnClick);stgsytbtn.setOnClickListener(noInternetOnClick);stgsmoregameslongbtn.setOnClickListener(noInternetOnClick);
 
 
@@ -2495,4 +2531,20 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
             }
         }
     }
+
+    private void handleCheatingSelectionChanged() {
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        com.vinaykpro.ludoking.network.LudoHostManager hostManager = com.vinaykpro.ludoking.network.LudoHostManager.getInstance(this);
+        if (cm.isAnyPlayerSelected()) {
+            // Disconnect / disable Wi-Fi Controller while Player Cheating is active
+            hostManager.stopHost();
+        } else {
+            // Restore Controller functionality through existing lifecycle
+            SharedPreferences prefs = getSharedPreferences("network_config", MODE_PRIVATE);
+            if (prefs.getBoolean("network_host_autostart", true)) {
+                hostManager.startHost();
+            }
+        }
+    }
+
 }

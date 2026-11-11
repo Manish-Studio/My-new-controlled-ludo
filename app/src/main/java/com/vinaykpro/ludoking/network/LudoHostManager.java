@@ -271,6 +271,10 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
      */
     public void startHost() {
         synchronized (lifecycleLock) {
+            if (com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected()) {
+                Log.w(TAG, "startHost blocked: Player Cheating Selection is active.");
+                return;
+            }
             ServerState state = currentState.get();
             if (state == ServerState.STARTING || state == ServerState.LISTENING) {
                 Log.w(TAG, "Duplicate startHost request ignored. Server is already " + state);
