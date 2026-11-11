@@ -200,6 +200,21 @@ public class PendingNumberStore {
     }
 
     /**
+     * Clears pending commands for a specific channel.
+     */
+    public void clearChannel(int channel) {
+        ConcurrentLinkedQueue<PendingCommand> q = queuesByChannel.get(channel);
+        if (q != null) {
+            PendingCommand cmd;
+            while ((cmd = q.poll()) != null) {
+                activeRequestIds.remove(cmd.getRequestId());
+                totalPendingCount.decrementAndGet();
+            }
+            notifyListeners();
+        }
+    }
+
+    /**
      * Clears all pending commands across all channels.
      * Note: Completed history is preserved to continue preventing duplicate replay.
      */

@@ -3,6 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/activitybg"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     android:layout_width="match_parent"
 
     android:layout_height="match_parent"
@@ -134,6 +136,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/redpiece1"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -171,6 +175,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/redpiece2"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -208,6 +214,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/redpiece3"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -245,6 +253,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/redpiece4"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -282,6 +292,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/greenpiece1"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -319,6 +331,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/greenpiece2"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -356,6 +370,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/greenpiece3"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -393,6 +409,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/greenpiece4"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -430,6 +448,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/bluepiece1"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -467,6 +487,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/bluepiece2"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -504,6 +526,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/bluepiece3"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -541,6 +565,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/bluepiece4"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone">
@@ -579,6 +605,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/yellowpiece1"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone"
@@ -617,6 +645,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/yellowpiece2"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone"
@@ -655,6 +685,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/yellowpiece3"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone"
@@ -693,6 +725,8 @@
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/yellowpiece4"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:layout_width="34dp"
             android:layout_height="54dp"
             android:visibility="gone"

@@ -1334,19 +1334,24 @@ public class MainActivity extends AppCompatActivity {
 
                  int chances = 0;
                  int autoMoveBlock = -1;
-
                  List<Piece> movablePieces = new ArrayList<>();
-
+                 int aliveMovableCount = 0;
+                 int unopenedCount = 0;
                 for(Piece p : pieces)
                 {
                     if(p.check(ch))
                     {
+                        if(p.isAlive) {
+                            aliveMovableCount++;
+                        } else {
+                            unopenedCount++;
+                        }
                         if(chances==0) {
                             autoMoveBlock = p.currBlock;
                             autoMove = p;
                         }
-                        else if(autoMoveBlock!=-1 && autoMoveBlock==p.currBlock) {
-
+                        else if((p.currBlock == -1 && autoMoveBlock == -1) || (autoMoveBlock != -1 && autoMoveBlock == p.currBlock)) {
+                            // Multiple unopened home tokens (currBlock == -1) or stacked tokens
                         }
                         else {
                             autoMove = null;
@@ -1355,7 +1360,13 @@ public class MainActivity extends AppCompatActivity {
                         ++chances;
                     }
                 }
-
+                if (ch == 6) {
+                    // When rolling a 6: if an alive token can move AND unopened tokens exist in home,
+                    // or multiple distinct alive tokens can move, do not auto-move: give the player the choice!
+                    if ((aliveMovableCount > 0 && unopenedCount > 0) || aliveMovableCount > 1) {
+                        autoMove = null;
+                    }
+                }
                 currentPlayer.chances = chances;
 
                 if(autoMove!=null) {
@@ -1915,6 +1926,20 @@ public class MainActivity extends AppCompatActivity {
                     player4color = "yellow";
             }
         }
+
+        // Synchronize active player identities and box IDs with network controllers
+        try {
+            java.util.List<String> activeBoxes = new java.util.ArrayList<>();
+            for (Player p : players) {
+                int ch = com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this).getChannelForPlayer(p.position, p.color);
+                String bId = com.vinaykpro.ludoking.network.LudoGameBridge.getBoxIdForChannel(ch);
+                if (!activeBoxes.contains(bId)) {
+                    activeBoxes.add(bId);
+                }
+            }
+            com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this).onGameStarted(players.size(), activeBoxes);
+        } catch (Exception ignored) {}
+
         View.OnTouchListener clickEffect = new View.OnTouchListener() {
             @SuppressLint("ClickableViewAccessibility")
             @Override

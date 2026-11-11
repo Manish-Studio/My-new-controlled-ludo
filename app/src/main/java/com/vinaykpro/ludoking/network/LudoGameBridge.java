@@ -8,6 +8,9 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -98,6 +101,7 @@ public class LudoGameBridge {
     private final CopyOnWriteArrayList<DiceRollObserver> observers = new CopyOnWriteArrayList<>();
 
     private volatile int currentActivePlayers = LudoProtocol.DEFAULT_BOX_COUNT;
+    private final CopyOnWriteArrayList<String> activeBoxIds = new CopyOnWriteArrayList<>(Arrays.asList("B1", "B2", "B3", "B4"));
     private volatile boolean isGameRunning = false;
 
     public static LudoGameBridge getInstance(@NonNull Context context) {
@@ -181,12 +185,23 @@ public class LudoGameBridge {
         return ch != null ? Math.max(1, Math.min(4, ch)) : 1;
     }
 
+    @NonNull
+    public List<String> getActiveBoxIds() {
+        return new ArrayList<>(activeBoxIds);
+    }
+
+    public boolean isBoxActive(@NonNull String boxId) {
+        String clean = boxId.trim().toUpperCase();
+        return activeBoxIds.contains(clean);
+    }
+
     // --- Controller Message Ingestion ---
 
     /**
      * Ingests a validated NUMBER_SELECTION message from the Controller.
+     * Enforces active-box validation, duplicate-rejection, and immediate ACK/ERROR responses.
      */
-    public void handleNumberSelection(@Nullable String clientId, @NonNull LudoProtocolMessage message) {
+    public boolean handleNumberSelection(@Nullable String clientId, @NonNull LudoProtocolMessage message) {
         String reqId = message.getRequestId();
         if (reqId == null || reqId.trim().isEmpty()) {
             reqId = "req_" + System.currentTimeMillis();
@@ -202,9 +217,24 @@ public class LudoGameBridge {
         if (boxId == null || boxId.trim().isEmpty()) {
             boxId = getBoxIdForChannel(channel);
         }
+        boxId = boxId.trim().toUpperCase();
 
         Integer rawVal = message.getValue();
         int value = rawVal != null ? Math.max(1, Math.min(6, rawVal)) : 6;
+
+        // Validation 1: Inactive box check (reject if game is running and box is not active)
+        if (isGameRunning && !isBoxActive(boxId)) {
+            Log.w(TAG, "Rejected NUMBER_SELECTION for inactive box " + boxId + " (active: " + activeBoxIds + ")");
+            LudoProtocolMessage errMsg = LudoProtocolMessage.createError(
+                    reqId,
+                    "INACTIVE_BOX",
+                    "Box " + boxId + " is not active in current game",
+                    boxId,
+                    channel
+            );
+            sendDirectOrBroadcast(clientId, errMsg);
+            return false;
+        }
 
         PendingNumberStore.PendingCommand command = new PendingNumberStore.PendingCommand(
                 reqId,
@@ -215,8 +245,26 @@ public class LudoGameBridge {
                 System.currentTimeMillis()
         );
 
-        Log.i(TAG, "Ingested Controller number selection: " + command);
-        pendingNumberStore.enqueue(command);
+        // Validation 2: Duplicate requestId check
+        boolean enqueued = pendingNumberStore.enqueue(command);
+        if (!enqueued) {
+            Log.w(TAG, "Rejected duplicate command for reqId=" + reqId);
+            LudoProtocolMessage errMsg = LudoProtocolMessage.createError(
+                    reqId,
+                    "DUPLICATE_REQUEST",
+                    "Duplicate requestId already active or completed: " + reqId,
+                    boxId,
+                    channel
+            );
+            sendDirectOrBroadcast(clientId, errMsg);
+            return false;
+        }
+
+        // Send confirmed ACK indicating successful receipt and queuing
+        LudoProtocolMessage ack = LudoProtocolMessage.createAck(reqId, "RECEIVED", boxId, channel, value);
+        sendDirectOrBroadcast(clientId, ack);
+        Log.i(TAG, "Ingested and ACKed Controller selection: " + command);
+        return true;
     }
 
     // --- Two-Phase Dice Roll Interception & NUMBER_RESULT Delivery ---
@@ -224,6 +272,7 @@ public class LudoGameBridge {
     /**
      * Step 1: Prepares the dice roll for the rolling channel.
      * Polls the next pending command if available, or retains fallbackRandom.
+     * Transmits an APPLYING acknowledgement to notify Controller that dice roll has commenced.
      * Does NOT transmit NUMBER_RESULT until confirmApplied() is invoked.
      */
     @NonNull
@@ -231,6 +280,19 @@ public class LudoGameBridge {
         PendingNumberStore.PendingCommand cmd = pendingNumberStore.pollForChannel(channel);
         if (cmd != null) {
             Log.i(TAG, "Prepared intercepted dice roll for channel " + channel + " (" + cmd.getBoxId() + "): value " + cmd.getValue() + " (reqId: " + cmd.getRequestId() + ")");
+            // Notify Controller that the game has begun applying this selection to the dice roll
+            try {
+                LudoProtocolMessage applyingAck = LudoProtocolMessage.createAck(
+                        cmd.getRequestId(),
+                        "APPLYING",
+                        cmd.getBoxId(),
+                        channel,
+                        cmd.getValue()
+                );
+                sendDirectOrBroadcast(cmd.getClientId(), applyingAck);
+            } catch (Exception e) {
+                Log.w(TAG, "Failed sending APPLYING notification: " + e.getMessage());
+            }
             return new AppliedRoll(cmd.getValue(), channel, cmd);
         } else {
             return new AppliedRoll(fallbackRandom, channel, null);
@@ -248,45 +310,77 @@ public class LudoGameBridge {
     }
 
     private void sendNumberResult(@NonNull PendingNumberStore.PendingCommand cmd, int value) {
+        LudoProtocolMessage resultMsg = LudoProtocolMessage.createNumberResult(
+                cmd.getRequestId(),
+                cmd.getBoxId(),
+                cmd.getChannel(),
+                value
+        );
+        sendDirectOrBroadcast(cmd.getClientId(), resultMsg);
+        Log.i(TAG, "Delivered NUMBER_RESULT: " + resultMsg.toJson());
+    }
+
+    private void sendDirectOrBroadcast(@Nullable String clientId, @NonNull LudoProtocolMessage message) {
         try {
             LudoHostManager hostManager = LudoHostManager.getInstance(appContext);
-            LudoProtocolMessage resultMsg = LudoProtocolMessage.createNumberResult(
-                    cmd.getRequestId(),
-                    cmd.getBoxId(),
-                    cmd.getChannel(),
-                    value
-            );
-
-            // Send to originating client if still connected, and broadcast for controllers/monitors
             boolean sentToClient = false;
-            if (cmd.getClientId() != null) {
-                sentToClient = hostManager.sendToClient(cmd.getClientId(), resultMsg);
+            if (clientId != null) {
+                sentToClient = hostManager.sendToClient(clientId, message);
             }
             if (!sentToClient) {
-                hostManager.broadcast(resultMsg);
+                hostManager.broadcast(message);
             }
-            Log.i(TAG, "Delivered NUMBER_RESULT: " + resultMsg.toJson());
         } catch (Exception e) {
-            Log.e(TAG, "Failed delivering NUMBER_RESULT: " + e.getMessage(), e);
+            Log.e(TAG, "Failed sending protocol message: " + e.getMessage(), e);
         }
     }
 
     // --- Game Lifecycle Tracking ---
 
-    public void onGameStarted(int numberOfPlayers) {
+    public void onGameStarted(int numberOfPlayers, @NonNull List<String> activeBoxes) {
         this.currentActivePlayers = Math.max(2, Math.min(4, numberOfPlayers));
         this.isGameRunning = true;
-        Log.i(TAG, "Ludo Game Started with " + currentActivePlayers + " players.");
-        // Always advertise 4 boxes to the Controller so that non-adjacent yards
-        // (such as B1 Red and B3 Yellow in 2-player mode) remain fully addressable on the Controller UI.
+        this.activeBoxIds.clear();
+        for (String b : activeBoxes) {
+            String clean = b.trim().toUpperCase();
+            if (!this.activeBoxIds.contains(clean)) {
+                this.activeBoxIds.add(clean);
+            }
+        }
+        // Purge pending queue of commands for inactive channels
+        for (int ch = 1; ch <= 4; ch++) {
+            String bId = getBoxIdForChannel(ch);
+            if (!this.activeBoxIds.contains(bId)) {
+                pendingNumberStore.clearChannel(ch);
+            }
+        }
+        Log.i(TAG, "Ludo Game Started with " + currentActivePlayers + " players. Active boxes: " + activeBoxIds);
         try {
-            LudoHostManager.getInstance(appContext).setActiveBoxCount(LudoProtocol.DEFAULT_BOX_COUNT);
+            LudoHostManager.getInstance(appContext).setActiveBoxes(currentActivePlayers, this.activeBoxIds);
         } catch (Exception ignored) {}
+    }
+
+    public void onGameStarted(int numberOfPlayers) {
+        List<String> defaultBoxes;
+        if (numberOfPlayers == 2) {
+            defaultBoxes = Arrays.asList("B1", "B3");
+        } else if (numberOfPlayers == 3) {
+            defaultBoxes = Arrays.asList("B1", "B2", "B3");
+        } else {
+            defaultBoxes = Arrays.asList("B1", "B2", "B3", "B4");
+        }
+        onGameStarted(numberOfPlayers, defaultBoxes);
     }
 
     public void onGameEnded() {
         this.isGameRunning = false;
-        Log.i(TAG, "Ludo Game Ended.");
+        this.activeBoxIds.clear();
+        this.activeBoxIds.addAll(Arrays.asList("B1", "B2", "B3", "B4"));
+        this.pendingNumberStore.clear();
+        try {
+            LudoHostManager.getInstance(appContext).setActiveBoxes(4, this.activeBoxIds);
+        } catch (Exception ignored) {}
+        Log.i(TAG, "Ludo Game Ended. Reset active boxes to default.");
     }
 
     public boolean isGameRunning() {

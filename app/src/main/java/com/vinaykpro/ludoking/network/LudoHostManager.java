@@ -9,6 +9,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -68,6 +69,7 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
     private volatile String lastErrorMessage = null;
     private volatile int configuredPort = DEFAULT_PORT;
     private volatile int activeBoxCount = LudoProtocol.DEFAULT_BOX_COUNT;
+    private volatile List<String> activeBoxIds = Arrays.asList("B1", "B2", "B3", "B4");
 
     /**
      * Retrieves the Application-scoped singleton instance.
@@ -164,6 +166,22 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
         return activeBoxCount;
     }
 
+    @NonNull
+    public List<String> getActiveBoxIds() {
+        return activeBoxIds != null ? new ArrayList<>(activeBoxIds) : Arrays.asList("B1", "B2", "B3", "B4");
+    }
+
+    /**
+     * Updates active boxes and broadcasts CONFIG to connected controllers.
+     */
+    public void setActiveBoxes(int count, @NonNull List<String> boxIds) {
+        this.activeBoxCount = count;
+        this.activeBoxIds = new ArrayList<>(boxIds);
+        LudoProtocolMessage config = LudoProtocolMessage.createConfig(this.activeBoxCount, this.activeBoxIds);
+        broadcast(config);
+        Log.i(TAG, "Broadcasting updated CONFIG: count=" + count + ", activeBoxIds=" + this.activeBoxIds);
+    }
+
     /**
      * Updates the active box count within the verified Controller range (2..4).
      * Returns false if out of range.
@@ -171,6 +189,12 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
     public boolean setActiveBoxCount(int count) {
         if (count >= LudoProtocol.MIN_BOX_COUNT && count <= LudoProtocol.MAX_BOX_COUNT) {
             this.activeBoxCount = count;
+            List<String> boxes = new ArrayList<>();
+            for (int i = 1; i <= count; i++) {
+                boxes.add("B" + i);
+            }
+            this.activeBoxIds = boxes;
+            broadcast(LudoProtocolMessage.createConfig(count, this.activeBoxIds));
             return true;
         }
         Log.w(TAG, "Invalid activeBoxCount rejected: " + count + " (Allowed: " +
@@ -399,17 +423,12 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
                 break;
 
             case GET_CONFIG:
-                LudoProtocolMessage config = LudoProtocolMessage.createConfig(activeBoxCount);
+                LudoProtocolMessage config = LudoProtocolMessage.createConfig(activeBoxCount, activeBoxIds);
                 sendToClient(clientId, config);
                 break;
 
             case NUMBER_SELECTION:
-                // Send immediate ACK confirming TCP receipt with matching requestId
-                if (message.getRequestId() != null) {
-                    LudoProtocolMessage ack = LudoProtocolMessage.createAck(message.getRequestId(), "OK");
-                    sendToClient(clientId, ack);
-                }
-                // Ingest into Game Engine Bridge and PendingNumberStore
+                // Handled with full validation, specific status ACK or rejection ERROR in LudoGameBridge
                 LudoGameBridge.getInstance(appContext).handleNumberSelection(clientId, message);
                 break;
 
