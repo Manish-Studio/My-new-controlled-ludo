@@ -66,6 +66,8 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
     TextView usernamehomescreen,diamondscount1,diamondscount2,coinscount1,coinscount2;
     // settings layout views
     ImageView stgsbackbtn,stgssharebtn,stgslikebtn,stgsgeturpverifiedbtn,stgssoundonoffbtn,stgsmusiconoffbtn,stgsplaybtn,stgslanguagebtn,stgsselectbtn,stgsviewbtn1,stgsfaqbtn,stgscomposebtn,stgsrulesbtn,stgsviewbtn2,stgsmoregamesbtn,stgslboardbtn,stgsviewbtn3,stgseditbtn,stgsinfobtn,stgsdelaccountbtn,stgsfbbtn,stgsinstabtn,stgstwitterbtn,stgsytbtn,stgsmoregameslongbtn;
+    android.widget.CheckBox cheatRed, cheatGreen, cheatYellow, cheatBlue;
+    boolean isSyncingCheatCheckboxes = false;
     // statistics layout views
     ImageView stcsusernamebtn,stcsprofpic,stcsbackbtn,stcseditprofile,stcslgwfb,stcslgwggl,stcslgwpg,stcsfshare;
     TextView stcsusernametextview;
@@ -438,6 +440,7 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
             @Override
             public void onClick(View view) {
                 giveClickSound();
+                syncCheatingCheckboxesUi();
                 settingspopupbg.setScaleX(0.0f);settingspopupbg.setScaleY(0.0f);
                 settingspopupbg.setVisibility(View.VISIBLE);
                 settingspopupbg.animate().scaleX(1.0f).scaleY(1.0f).setInterpolator(new OvershootInterpolator()).setDuration(200).setListener(new AnimatorListenerAdapter() {
@@ -574,40 +577,16 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         }
 
         // Setup Player Cheating Selection checkboxes
-        android.widget.CheckBox cheatRed = findViewById(R.id.cheat_cb_red);
-        android.widget.CheckBox cheatGreen = findViewById(R.id.cheat_cb_green);
-        android.widget.CheckBox cheatYellow = findViewById(R.id.cheat_cb_yellow);
-        android.widget.CheckBox cheatBlue = findViewById(R.id.cheat_cb_blue);
-        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatManager = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        cheatRed = findViewById(R.id.cheat_cb_red);
+        cheatGreen = findViewById(R.id.cheat_cb_green);
+        cheatYellow = findViewById(R.id.cheat_cb_yellow);
+        cheatBlue = findViewById(R.id.cheat_cb_blue);
+        syncCheatingCheckboxesUi();
 
-        if (cheatRed != null) {
-            cheatRed.setChecked(cheatManager.isPlayerSelected("red"));
-            cheatRed.setOnCheckedChangeListener((btn, isChecked) -> {
-                cheatManager.setPlayerSelected("red", isChecked);
-                handleCheatingSelectionChanged();
-            });
-        }
-        if (cheatGreen != null) {
-            cheatGreen.setChecked(cheatManager.isPlayerSelected("green"));
-            cheatGreen.setOnCheckedChangeListener((btn, isChecked) -> {
-                cheatManager.setPlayerSelected("green", isChecked);
-                handleCheatingSelectionChanged();
-            });
-        }
-        if (cheatYellow != null) {
-            cheatYellow.setChecked(cheatManager.isPlayerSelected("yellow"));
-            cheatYellow.setOnCheckedChangeListener((btn, isChecked) -> {
-                cheatManager.setPlayerSelected("yellow", isChecked);
-                handleCheatingSelectionChanged();
-            });
-        }
-        if (cheatBlue != null) {
-            cheatBlue.setChecked(cheatManager.isPlayerSelected("blue"));
-            cheatBlue.setOnCheckedChangeListener((btn, isChecked) -> {
-                cheatManager.setPlayerSelected("blue", isChecked);
-                handleCheatingSelectionChanged();
-            });
-        }
+        attachCheatCheckboxListener(cheatRed, "red");
+        attachCheatCheckboxListener(cheatGreen, "green");
+        attachCheatCheckboxListener(cheatYellow, "yellow");
+        attachCheatCheckboxListener(cheatBlue, "blue");
 
         stgssharebtn.setOnClickListener(noInternetOnClick);stgslikebtn.setOnClickListener(noInternetOnClick);stgsgeturpverifiedbtn.setOnClickListener(noInternetOnClick);stgsplaybtn.setOnClickListener(noInternetOnClick);stgslanguagebtn.setOnClickListener(noInternetOnClick);stgsselectbtn.setOnClickListener(noInternetOnClick);stgsviewbtn1.setOnClickListener(noInternetOnClick);stgsfaqbtn.setOnClickListener(noInternetOnClick);stgscomposebtn.setOnClickListener(noInternetOnClick);stgsrulesbtn.setOnClickListener(noInternetOnClick);stgsviewbtn2.setOnClickListener(noInternetOnClick);stgsmoregamesbtn.setOnClickListener(noInternetOnClick);stgslboardbtn.setOnClickListener(noInternetOnClick);stgsviewbtn3.setOnClickListener(noInternetOnClick);stgseditbtn.setOnClickListener(noInternetOnClick);stgsinfobtn.setOnClickListener(openNetworkListener);stgsdelaccountbtn.setOnClickListener(noInternetOnClick);stgsfbbtn.setOnClickListener(noInternetOnClick);stgsinstabtn.setOnClickListener(noInternetOnClick);stgstwitterbtn.setOnClickListener(noInternetOnClick);stgsytbtn.setOnClickListener(noInternetOnClick);stgsmoregameslongbtn.setOnClickListener(noInternetOnClick);
 
@@ -2530,20 +2509,77 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
                 m.start();
             }
         }
+        syncCheatingCheckboxesUi();
+        restoreControllerIfCheatingInactive();
+    }
+
+    private void attachCheatCheckboxListener(android.widget.CheckBox cb, String color) {
+        if (cb == null) return;
+        cb.setOnCheckedChangeListener((btn, isChecked) -> {
+            if (isSyncingCheatCheckboxes) return;
+            com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatManager =
+                    com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+            if (!cheatManager.setPlayerSelected(color, isChecked)) {
+                isSyncingCheatCheckboxes = true;
+                btn.setChecked(cheatManager.isPlayerSelected(color));
+                btn.setEnabled(!cheatManager.isMatchActive());
+                isSyncingCheatCheckboxes = false;
+                return;
+            }
+            handleCheatingSelectionChanged();
+        });
+    }
+
+    private void syncCheatingCheckboxesUi() {
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm =
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        boolean locked = cm.isMatchActive();
+        isSyncingCheatCheckboxes = true;
+        if (cheatRed != null) {
+            cheatRed.setChecked(cm.isPlayerSelected("red"));
+            cheatRed.setEnabled(!locked);
+            cheatRed.setAlpha(locked ? 0.5f : 1.0f);
+        }
+        if (cheatGreen != null) {
+            cheatGreen.setChecked(cm.isPlayerSelected("green"));
+            cheatGreen.setEnabled(!locked);
+            cheatGreen.setAlpha(locked ? 0.5f : 1.0f);
+        }
+        if (cheatYellow != null) {
+            cheatYellow.setChecked(cm.isPlayerSelected("yellow"));
+            cheatYellow.setEnabled(!locked);
+            cheatYellow.setAlpha(locked ? 0.5f : 1.0f);
+        }
+        if (cheatBlue != null) {
+            cheatBlue.setChecked(cm.isPlayerSelected("blue"));
+            cheatBlue.setEnabled(!locked);
+            cheatBlue.setAlpha(locked ? 0.5f : 1.0f);
+        }
+        isSyncingCheatCheckboxes = false;
+    }
+
+    private void restoreControllerIfCheatingInactive() {
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm =
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        if (!cm.isAnyPlayerSelected()) {
+            SharedPreferences prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(this);
+            if (prefs.getBoolean("network_host_autostart", true)) {
+                com.vinaykpro.ludoking.network.LudoHostManager.getInstance(this).startHost();
+            }
+        }
     }
 
     private void handleCheatingSelectionChanged() {
-        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
-        com.vinaykpro.ludoking.network.LudoHostManager hostManager = com.vinaykpro.ludoking.network.LudoHostManager.getInstance(this);
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm =
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        com.vinaykpro.ludoking.network.LudoHostManager hostManager =
+                com.vinaykpro.ludoking.network.LudoHostManager.getInstance(this);
         if (cm.isAnyPlayerSelected()) {
             // Disconnect / disable Wi-Fi Controller while Player Cheating is active
             hostManager.stopHost();
         } else {
             // Restore Controller functionality through existing lifecycle
-            SharedPreferences prefs = getSharedPreferences("network_config", MODE_PRIVATE);
-            if (prefs.getBoolean("network_host_autostart", true)) {
-                hostManager.startHost();
-            }
+            restoreControllerIfCheatingInactive();
         }
     }
 

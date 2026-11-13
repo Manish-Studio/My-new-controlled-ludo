@@ -187,6 +187,32 @@ public class MainActivity extends AppCompatActivity {
 
     ImageView gameStartImageView;
 
+    private long activeCheatMatchSessionId = -1L;
+    private boolean hasNotifiedMatchEnd = false;
+
+    private boolean isActivePlayerBot() {
+        if (players == null || players.isEmpty()) return false;
+        int idx = (currentPlayerIndex == 0) ? players.size() - 1 : currentPlayerIndex - 1;
+        if (idx < 0 || idx >= players.size()) return false;
+        return players.get(idx).isBot;
+    }
+
+    private void notifyMatchEndedOnce() {
+        if (!hasNotifiedMatchEnd) {
+            hasNotifiedMatchEnd = true;
+            try {
+                com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this).onGameEnded();
+            } catch (Exception ignored) {}
+            try {
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
+                        .onMatchEndedIfSession(activeCheatMatchSessionId);
+            } catch (Exception ignored) {}
+            try {
+                com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.getInstance().resetMatch();
+            } catch (Exception ignored) {}
+        }
+    }
+
     class Piece
     {
         // managed by constructor
@@ -238,15 +264,18 @@ public class MainActivity extends AppCompatActivity {
             this.readyToPick.setVisibility(View.INVISIBLE);
             this.piece.setVisibility(View.VISIBLE);
             this.endPosition = startPosition!=0?startPosition-2:50;
-            if(!isBotPiece) {
-                this.piece.setOnClickListener(view -> {
-                    com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
-                    if (cheatMgr.isAbilityActiveForPlayer(currentPlayerColor) && (d.isDiceClickable || isDiceMovableExtraChance) && !d.isRolling) {
-                        // Secret gesture: Any token single tap selects number 5 and rolls the dice
-                        hintArrow.setVisibility(GONE);
-                        d.roll(5);
-                        return;
-                    }
+            this.piece.setOnClickListener(view -> {
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+                if (!isActivePlayerBot()
+                        && cheatMgr.isAbilityActiveForPlayer(currentPlayerColor)
+                        && d != null
+                        && (d.isDiceClickable || isDiceMovableExtraChance)
+                        && !d.isRolling) {
+                    // Secret gesture: Any token single tap locks 5 (no token moves, dice rolls when tapped next)
+                    cheatMgr.onTokenTappedForFive(currentPlayerColor);
+                    return;
+                }
+                if (!isBotPiece) {
                     if (isAlive && isClickable && currentPlayerColor.equals(colour)) {
                         diceValue = currentPlayerDice;
                         currentPlayerDice = -1;
@@ -263,8 +292,8 @@ public class MainActivity extends AppCompatActivity {
                         }
                         makeAlive();
                     }
-                });
-            }
+                }
+            });
             if(!normalPiece) {
                 pieceIcon.setScaleX(0.8f);pieceIcon.setScaleY(0.8f);
                 pieceIcon.setImageDrawable(getStylishIconDrawableByColor(this.colour));
@@ -756,7 +785,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void showGameOverScreen() {
         congratulationslayout.setVisibility(View.VISIBLE);
-        com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().onMatchEnded();
+        notifyMatchEndedOnce();
 
         if(isSoundOn) {
             congratulationSound = MediaPlayer.create(this, R.raw.congratulations);
@@ -821,7 +850,20 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void applyWinnerCrownsLayout() {
+        View boardContainer = findViewById(R.id.relativeLayout);
+        int boardSizePx = (int) pxWidth;
+        if (boardContainer != null && boardContainer.getWidth() > 0 && boardContainer.getHeight() > 0) {
+            boardSizePx = Math.min(boardContainer.getWidth(), boardContainer.getHeight());
+        }
+        WinnerCrownLayoutHelper.applyCrownLayout(crownIndex1, findViewById(R.id.winnerindexnumber1), R.id.relativeLayout, boardSizePx, 1);
+        WinnerCrownLayoutHelper.applyCrownLayout(crownIndex2, findViewById(R.id.winnerindexnumber2), R.id.relativeLayout, boardSizePx, 2);
+        WinnerCrownLayoutHelper.applyCrownLayout(crownIndex3, findViewById(R.id.winnerindexnumber3), R.id.relativeLayout, boardSizePx, 3);
+        WinnerCrownLayoutHelper.applyCrownLayout(crownIndex4, findViewById(R.id.winnerindexnumber4), R.id.relativeLayout, boardSizePx, 4);
+    }
+
     private void setCurrentPlayerAsWinnerAtCurrentPosition(int currentPlayerSelectedIndex,String colour,String playername) {
+        applyWinnerCrownsLayout();
         switch ((currentPlayerSelectedIndex+1)) {
             case 1:
                 crownIndex1.setVisibility(View.VISIBLE);
@@ -1129,6 +1171,11 @@ public class MainActivity extends AppCompatActivity {
 
         String mainColor;
 
+        final com.vinaykpro.ludoking.cheating.DiceHoldTracker diceHoldTracker =
+                new com.vinaykpro.ludoking.cheating.DiceHoldTracker();
+        final Handler diceLongPressHandler = new Handler(android.os.Looper.getMainLooper());
+        Runnable pendingLongPressRunnable = null;
+
         int player = 0,numberOfPlayers;
         Dice(ImageView diceImgView,int nop,String color)
         {
@@ -1154,34 +1201,124 @@ public class MainActivity extends AppCompatActivity {
             bLeftImgColor = findViewById(R.id.bleftpieceimage);
             bRightImgColor = findViewById(R.id.brightpieceimage);
 
+            bindDefaultTokenPngListener(tLeftImgColor, 1);
+            bindDefaultTokenPngListener(tRightImgColor, 2);
+            bindDefaultTokenPngListener(bLeftImgColor, 3);
+            bindDefaultTokenPngListener(bRightImgColor, 4);
+
             mainColor = color;
 
             diceHandler = new Handler();
             isRolling = false;
             isDiceClickable = true;
 
-            diceImgView.setOnTouchListener(new View.OnTouchListener() {
-                private float lastTouchX = -1f;
-                private float lastTouchY = -1f;
+            final float[] pendingTouchCoords = new float[] { -1f, -1f };
+            final boolean[] hasPendingTouchCoords = new boolean[] { false };
 
+            diceImgView.setOnTouchListener(new View.OnTouchListener() {
+                @SuppressLint("ClickableViewAccessibility")
                 @Override
                 public boolean onTouch(View v, MotionEvent event) {
-                    if (event.getAction() == MotionEvent.ACTION_UP) {
-                        lastTouchX = event.getX();
-                        lastTouchY = event.getY();
-                        if (!isRolling && (isDiceClickable || isDiceMovableExtraChance)) {
-                            hintArrow.setVisibility(GONE);
-                            com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
-                            Integer gestureNum = null;
-                            if (cheatMgr.isAbilityActiveForPlayer(currentPlayerColor)) {
-                                float w = v.getWidth() > 0 ? v.getWidth() : 1f;
-                                float h = v.getHeight() > 0 ? v.getHeight() : 1f;
-                                float normX = lastTouchX / w;
-                                float normY = lastTouchY / h;
-                                gestureNum = cheatMgr.getQuadrantNumber(normX, normY);
+                    switch (event.getActionMasked()) {
+                        case MotionEvent.ACTION_DOWN: {
+                            cancelPendingLongPress();
+                            pendingTouchCoords[0] = event.getX();
+                            pendingTouchCoords[1] = event.getY();
+                            hasPendingTouchCoords[0] = true;
+
+                            final long touchToken = diceHoldTracker.onTouchDown(
+                                    event.getX(), event.getY(), v.getWidth(), v.getHeight());
+                            com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr =
+                                    com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+                            if (!isRolling
+                                    && (isDiceClickable || isDiceMovableExtraChance)
+                                    && !isActivePlayerBot()
+                                    && cheatMgr.canRequestSixLock(currentPlayerColor)) {
+                                final Runnable holdRunnable = new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        com.vinaykpro.ludoking.cheating.DiceHoldTracker.TimeoutOutcome outcome =
+                                                diceHoldTracker.onLongPressTimeout(touchToken);
+                                        if (outcome == com.vinaykpro.ludoking.cheating.DiceHoldTracker.TimeoutOutcome.NEED_MORE_WAIT) {
+                                            diceLongPressHandler.postDelayed(this, diceHoldTracker.getRemainingLongPressWaitMs());
+                                            return;
+                                        }
+                                        if (outcome == com.vinaykpro.ludoking.cheating.DiceHoldTracker.TimeoutOutcome.TRIGGER_LONG_PRESS) {
+                                            pendingLongPressRunnable = null;
+                                            hasPendingTouchCoords[0] = false;
+                                            v.setPressed(false);
+                                            if (!isFinishing() && !isDestroyed() && !hasNotifiedMatchEnd
+                                                    && !isRolling
+                                                    && (isDiceClickable || isDiceMovableExtraChance)
+                                                    && !isActivePlayerBot()) {
+                                                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
+                                                        .onDiceLongPressed(
+                                                                currentPlayerColor,
+                                                                false,
+                                                                com.vinaykpro.ludoking.cheating.DiceHoldTracker.LONG_PRESS_DURATION_MS + 1L
+                                                        );
+                                                hintArrow.setVisibility(GONE);
+                                                roll(null);
+                                            }
+                                        }
+                                    }
+                                };
+                                pendingLongPressRunnable = holdRunnable;
+                                diceLongPressHandler.postDelayed(
+                                        holdRunnable,
+                                        com.vinaykpro.ludoking.cheating.DiceHoldTracker.LONG_PRESS_DURATION_MS + 1L
+                                );
                             }
-                            roll(gestureNum);
-                            return true;
+                            return false;
+                        }
+                        case MotionEvent.ACTION_MOVE: {
+                            diceHoldTracker.onTouchMove(event.getX(), event.getY(), v.getWidth(), v.getHeight());
+                            if (diceHoldTracker.isTouchActive()) {
+                                pendingTouchCoords[0] = diceHoldTracker.getLastX();
+                                pendingTouchCoords[1] = diceHoldTracker.getLastY();
+                            }
+                            return false;
+                        }
+                        case MotionEvent.ACTION_UP: {
+                            cancelPendingLongPress();
+                            com.vinaykpro.ludoking.cheating.DiceHoldTracker.TouchUpResult upResult =
+                                    diceHoldTracker.onTouchUp(event.getX(), event.getY(), v.getWidth(), v.getHeight());
+                            if (upResult.outcome == com.vinaykpro.ludoking.cheating.DiceHoldTracker.TouchUpOutcome.NONE) {
+                                hasPendingTouchCoords[0] = false;
+                                v.setPressed(false);
+                                return true;
+                            }
+                            if (upResult.outcome == com.vinaykpro.ludoking.cheating.DiceHoldTracker.TouchUpOutcome.LONG_PRESS) {
+                                hasPendingTouchCoords[0] = false;
+                                v.setPressed(false);
+                                if (!isRolling && (isDiceClickable || isDiceMovableExtraChance) && !isActivePlayerBot()) {
+                                    com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr =
+                                            com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+                                    cheatMgr.onDiceLongPressed(currentPlayerColor, false, upResult.holdDurationMs);
+                                    Integer gestureNum = null;
+                                    if (cheatMgr.isAbilityActiveForPlayer(currentPlayerColor)) {
+                                        float w = v.getWidth() > 0 ? v.getWidth() : 1f;
+                                        float h = v.getHeight() > 0 ? v.getHeight() : 1f;
+                                        float normX = Math.max(0f, Math.min(1f, upResult.touchX / w));
+                                        float normY = Math.max(0f, Math.min(1f, upResult.touchY / h));
+                                        gestureNum = cheatMgr.getQuadrantNumber(normX, normY);
+                                    }
+                                    hintArrow.setVisibility(GONE);
+                                    roll(gestureNum);
+                                }
+                                return true;
+                            }
+                            // SHORT_TAP: preserve exact coords and allow OnClickListener to trigger ONE roll
+                            pendingTouchCoords[0] = upResult.touchX;
+                            pendingTouchCoords[1] = upResult.touchY;
+                            hasPendingTouchCoords[0] = true;
+                            return false;
+                        }
+                        case MotionEvent.ACTION_CANCEL: {
+                            cancelPendingLongPress();
+                            diceHoldTracker.onTouchCancel();
+                            hasPendingTouchCoords[0] = false;
+                            return false;
                         }
                     }
                     return false;
@@ -1190,9 +1327,26 @@ public class MainActivity extends AppCompatActivity {
             diceImgView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View view) {
-                    if(!isRolling && (isDiceClickable || isDiceMovableExtraChance)) {
+                    if (diceHoldTracker.shouldSuppressClickCallback()) {
+                        return;
+                    }
+                    boolean useTouchCoords = hasPendingTouchCoords[0];
+                    hasPendingTouchCoords[0] = false;
+                    if (!isRolling && (isDiceClickable || isDiceMovableExtraChance) && !isActivePlayerBot()) {
                         hintArrow.setVisibility(GONE);
-                        roll(null);
+                        Integer gestureNum = null;
+                        if (useTouchCoords) {
+                            com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr =
+                                    com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+                            if (cheatMgr.isAbilityActiveForPlayer(currentPlayerColor)) {
+                                float w = view.getWidth() > 0 ? view.getWidth() : 1f;
+                                float h = view.getHeight() > 0 ? view.getHeight() : 1f;
+                                float normX = Math.max(0f, Math.min(1f, pendingTouchCoords[0] / w));
+                                float normY = Math.max(0f, Math.min(1f, pendingTouchCoords[1] / h));
+                                gestureNum = cheatMgr.getQuadrantNumber(normX, normY);
+                            }
+                        }
+                        roll(gestureNum);
                     }
                 }
             });
@@ -1291,14 +1445,43 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        private void bindDefaultTokenPngListener(@Nullable ImageView tokenPngView, final int podPosition) {
+            if (tokenPngView == null) return;
+            tokenPngView.setOnClickListener(v -> {
+                if (!isRolling && (isDiceClickable || isDiceMovableExtraChance) && !isActivePlayerBot()) {
+                    com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
+                            .onDefaultTokenPngTapped(podPosition, currentPlayerPosition, currentPlayerColor, isActivePlayerBot());
+                }
+            });
+        }
+
+        void cancelPendingLongPress() {
+            if (pendingLongPressRunnable != null) {
+                diceLongPressHandler.removeCallbacks(pendingLongPressRunnable);
+                pendingLongPressRunnable = null;
+            }
+        }
+
         void roll() {
             roll(null);
         }
 
         void roll(Integer forcedGestureNum) {
+            if (isRolling) {
+                return;
+            }
+            cancelPendingLongPress();
             isRolling = true;
             isDiceClickable = false;
             isDiceMovableExtraChance = false;
+            mainDiceImageView.setAlpha(1.0f);
+            final String rollingColor = currentPlayerColor;
+            final boolean rollingIsBot = isActivePlayerBot();
+            final com.vinaykpro.ludoking.cheating.TurnSixRuleValidator turnValidator =
+                    com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.getInstance();
+            final long rollingTurnId = turnValidator.getCurrentTurnId();
+            final long rollEventId = turnValidator.beginRollEvent();
+
             if(isSoundOn) {
                 if (diceRollSound.isPlaying()) {
                     diceRollSound.pause();
@@ -1310,36 +1493,96 @@ public class MainActivity extends AppCompatActivity {
             diceAnimationDrawable.setOneShot(true);
             diceAnimationDrawable.start();
             diceHandler.postDelayed(() -> {
-                int ch = (int) Math.ceil(Math.random()*6);
+                if (isFinishing() || isDestroyed() || hasNotifiedMatchEnd || players == null || players.isEmpty()) {
+                    isRolling = false;
+                    return;
+                }
 
-                // Identify rolling player and check Controller pending selection
+                // Identify rolling player and verify roll was not cancelled/superseded by turn change
                 int x;
                 if(currentPlayerIndex==0) { x=players.size()-1; } else { x=currentPlayerIndex-1; }
                 Player currentPlayer = (x >= 0 && x < players.size()) ? players.get(x) : null;
-
-                com.vinaykpro.ludoking.network.LudoGameBridge.AppliedRoll appliedRoll = null;
-                if (currentPlayer != null) {
-                    try {
-                        int channel = com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(MainActivity.this)
-                                .getChannelForPlayer(currentPlayer.position, currentPlayer.color);
-                        appliedRoll = com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(MainActivity.this)
-                                .prepareDiceRoll(channel, ch);
-                        ch = appliedRoll.getValue();
-                    } catch (Exception e) {
-                        android.util.Log.e("MainActivity", "Error preparing bridge dice roll: " + e.getMessage());
-                    }
-                } else if (editText != null) {
-                    String number = editText.getText().toString();
-                    try {
-                        ch = Integer.parseInt(number);
-                    } catch (Exception ignored) {}
+                if (currentPlayer == null
+                        || !rollingColor.equals(currentPlayer.getColor())
+                        || rollingTurnId != turnValidator.getCurrentTurnId()) {
+                    isRolling = false;
+                    return;
                 }
 
-                // Check Player Cheating Selection resolution with priority
-                Integer forcedVal = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
-                        .resolveRollNumber(currentPlayerColor, forcedGestureNum);
-                if (forcedVal != null) {
-                    ch = forcedVal;
+                int ch = (int) Math.ceil(Math.random()*6);
+                com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.RollSource rollSource =
+                        com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.RollSource.RANDOM;
+                String controllerRequestId = null;
+                int channel = -1;
+
+                com.vinaykpro.ludoking.network.LudoGameBridge.AppliedRoll appliedRoll = null;
+                try {
+                    com.vinaykpro.ludoking.network.LudoGameBridge bridge =
+                            com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(MainActivity.this);
+                    channel = bridge.getChannelForPlayer(currentPlayer.position, currentPlayer.color);
+                    if (!com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected()) {
+                        appliedRoll = bridge.prepareDiceRollForTurn(rollingTurnId, channel, ch);
+                        if (appliedRoll.isFromController()) {
+                            ch = appliedRoll.getValue();
+                            rollSource = com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.RollSource.CONTROLLER;
+                            if (appliedRoll.getCommand() != null) {
+                                controllerRequestId = appliedRoll.getCommand().getRequestId();
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "Error preparing bridge dice roll: " + e.getMessage());
+                }
+
+                // Check Player Cheating Selection resolution with priority (only for human active player)
+                if (!rollingIsBot && !currentPlayer.isBot) {
+                    Integer forcedVal = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
+                            .resolveRollNumber(rollingColor, forcedGestureNum);
+                    if (forcedVal != null) {
+                        ch = forcedVal;
+                        rollSource = com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.RollSource.ABILITY;
+                    }
+                }
+
+                // Centralized global Two-Six Rule validation BEFORE displaying, committing, or moving
+                com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.ValidationResult validation =
+                        turnValidator.validateAndAcceptRoll(
+                                rollEventId,
+                                rollingTurnId,
+                                rollingColor,
+                                channel,
+                                ch,
+                                rollSource,
+                                controllerRequestId
+                        );
+                if (!validation.accepted) {
+                    diceAnimationDrawable.stop();
+                    isRolling = false;
+                    currentPlayerDice = -1;
+                    if (appliedRoll != null && appliedRoll.isFromController()) {
+                        appliedRoll.rejectApplied(
+                                validation.reason.name(),
+                                "Dice roll rejected: " + validation.reason
+                        );
+                    }
+                    if (validation.shouldForfeitTurn) {
+                        isDiceClickable = false;
+                        isDiceMovableExtraChance = false;
+                        hintArrow.setVisibility(GONE);
+                        mainDiceImageView.setImageDrawable(
+                                ResourcesCompat.getDrawable(getResources(), R.drawable.dice0008, null));
+                        mainDiceImageView.setAlpha(0.45f);
+                        for (Piece p : getPiecesByColor(rollingColor)) {
+                            p.inactiveState();
+                        }
+                        diceHandler.postDelayed(() -> {
+                            if (!isFinishing() && !isDestroyed() && !hasNotifiedMatchEnd) {
+                                switchPlayers();
+                                isDiceClickable = true;
+                            }
+                        }, 500);
+                    }
+                    return;
                 }
 
                 switch (ch) {
@@ -1365,12 +1608,14 @@ public class MainActivity extends AppCompatActivity {
                 isRolling = false;
 
                 currentPlayerDice = ch;
-                // Update Cheating Ability state after successful application
-                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
-                        .onRollResultApplied(currentPlayerColor, ch);
+                // Consume SIX LOCK / update cheating state ONLY AFTER result is committed to engine
+                if (!rollingIsBot && !currentPlayer.isBot) {
+                    com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
+                            .onRollResultApplied(rollingColor, ch);
+                }
 
                 // Confirm dice value is actually applied before reporting NUMBER_RESULT to Controller
-                if (appliedRoll != null) {
+                if (appliedRoll != null && appliedRoll.isFromController()) {
                     appliedRoll.confirmApplied();
                 }
 
@@ -1731,7 +1976,12 @@ public class MainActivity extends AppCompatActivity {
 
         Bundle extras = getIntent().getExtras();
         nop = extras.getInt("nop");
-        com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().onMatchStarted();
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr =
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        cheatMgr.onMatchStarted();
+        com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.getInstance().resetMatch();
+        activeCheatMatchSessionId = cheatMgr.getMatchSessionId();
+        hasNotifiedMatchEnd = false;
         try {
             com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this).onGameStarted(nop);
         } catch (Exception ignored) {}
@@ -1791,10 +2041,15 @@ public class MainActivity extends AppCompatActivity {
 
         //
 
-        crownIndex1.getLayoutParams().height = (int) total;
-        crownIndex2.getLayoutParams().height = (int) total;
-        crownIndex3.getLayoutParams().height = (int) total;
-        crownIndex4.getLayoutParams().height = (int) total;
+        applyWinnerCrownsLayout();
+        View boardContainer = findViewById(R.id.relativeLayout);
+        if (boardContainer != null) {
+            boardContainer.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
+                    applyWinnerCrownsLayout();
+                }
+            });
+        }
 
         p1exitbox.getLayoutParams().height = (int) (total * 0.985);
         p2exitbox.getLayoutParams().height = (int) (total * 0.985);
@@ -2067,6 +2322,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view) {
                 stopEverything();
+                notifyMatchEndedOnce();
                 Intent i = new Intent(MainActivity.this, HomeActivity.class);
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 startActivity(i);
@@ -2301,6 +2557,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view) {
                 stopEverything();
+                notifyMatchEndedOnce();
                 Intent i = getIntent();
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 i.putExtras(i.getExtras());
@@ -2403,7 +2660,10 @@ public class MainActivity extends AppCompatActivity {
             activePodAnimator = null;
         }
         globalHandler.removeCallbacksAndMessages(null);
-        d.diceHandler.removeCallbacksAndMessages(null);
+        if (d != null) {
+            d.cancelPendingLongPress();
+            d.diceHandler.removeCallbacksAndMessages(null);
+        }
         if(congratulationSound!=null) {
             if(congratulationSound.isPlaying()) {
                 congratulationSound.stop();
@@ -2415,10 +2675,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try {
-            com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this).onGameEnded();
-            com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().onMatchEnded();
-        } catch (Exception ignored) {}
+        if (!isChangingConfigurations()) {
+            notifyMatchEndedOnce();
+        }
     }
 
     private void hideThisPlayerDiceBg(int index) {
@@ -2604,6 +2863,20 @@ public class MainActivity extends AppCompatActivity {
     {
         Player currentPlayer = players.get(currentPlayerIndex);
         com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().onPlayerTurnChanged(currentPlayer.getColor());
+        int nextChannel = -1;
+        try {
+            nextChannel = com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this)
+                    .getChannelForPlayer(currentPlayer.getPosition(), currentPlayer.getColor());
+        } catch (Exception ignored) {}
+        long nextTurnId = com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.getInstance()
+                .onTurnChanged(currentPlayer.getColor(), nextChannel);
+        try {
+            com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this)
+                    .onActiveTurnChanged(nextTurnId, nextChannel, currentPlayer.getColor());
+        } catch (Exception ignored) {}
+        if (mainDiceImageView != null) {
+            mainDiceImageView.setAlpha(1.0f);
+        }
         currentPlayerPosition = currentPlayer.getPosition();
         currentPlayerColor = currentPlayer.getColor();
         currentPlayerSelectedIndex = currentPlayer.getIndex();
@@ -2775,12 +3048,8 @@ public class MainActivity extends AppCompatActivity {
         hintArrow.bringToFront();
         mainDiceImageView.setElevation(30 * displayMetrics.density);
         hintArrow.setElevation(35 * displayMetrics.density);
-        hintArrow.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().onArrowTapped(currentPlayerColor);
-            }
-        });
+        hintArrow.setClickable(false);
+        hintArrow.setFocusable(false);
 
         crownIndex1 = findViewById(R.id.winnercrownindex1);
         crownIndex2 = findViewById(R.id.winnercrownindex2);

@@ -336,6 +336,14 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
      */
     public void restartHost() {
         synchronized (lifecycleLock) {
+            if (com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected()) {
+                Log.w(TAG, "restartHost blocked: Player Cheating Selection is active.");
+                ServerState state = currentState.get();
+                if (state != ServerState.STOPPED && state != ServerState.STOPPING) {
+                    stopHost();
+                }
+                return;
+            }
             ServerState state = currentState.get();
             if (state == ServerState.STOPPED) {
                 startHost();
@@ -349,6 +357,12 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
                 try {
                     Log.d(TAG, "Sequential restart: Stopping TCP server...");
                     tcpServer.stop();
+
+                    if (com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected()) {
+                        Log.w(TAG, "Sequential restart aborted: Player Cheating Selection is active.");
+                        updateState(ServerState.STOPPED, "Blocked while Player Cheating Selection is active");
+                        return;
+                    }
 
                     Log.d(TAG, "Sequential restart: Starting TCP server on port " + portToBind);
                     updateState(ServerState.STARTING, "Restarting server on port " + portToBind + "...");
@@ -376,6 +390,11 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
 
     @Override
     public void onServerStarted(int port) {
+        if (com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected()) {
+            Log.w(TAG, "onServerStarted aborted: Player Cheating Selection is active. Stopping host without NSD registration.");
+            stopHost();
+            return;
+        }
         Log.i(TAG, "TCP Server bound on port: " + port);
         updateState(ServerState.LISTENING, "Listening on port " + port);
         nsdHelper.registerService(port);

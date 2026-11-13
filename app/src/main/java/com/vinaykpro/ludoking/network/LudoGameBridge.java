@@ -47,13 +47,19 @@ public class LudoGameBridge {
     public static class AppliedRoll {
         private final int value;
         private final int channel;
+        private final long expectedTurnId;
         @Nullable
         private final PendingNumberStore.PendingCommand command;
         private final AtomicBoolean confirmed = new AtomicBoolean(false);
 
         public AppliedRoll(int value, int channel, @Nullable PendingNumberStore.PendingCommand command) {
+            this(value, channel, -1L, command);
+        }
+
+        public AppliedRoll(int value, int channel, long expectedTurnId, @Nullable PendingNumberStore.PendingCommand command) {
             this.value = value;
             this.channel = channel;
+            this.expectedTurnId = expectedTurnId;
             this.command = command;
         }
 
@@ -63,6 +69,10 @@ public class LudoGameBridge {
 
         public int getChannel() {
             return channel;
+        }
+
+        public long getExpectedTurnId() {
+            return expectedTurnId;
         }
 
         public boolean isFromController() {
@@ -76,11 +86,18 @@ public class LudoGameBridge {
 
         /**
          * Confirms that the dice value has actually been applied to the game and dice UI.
-         * Dispatches NUMBER_RESULT to Controller and marks command completed.
+         * Refuses to commit if the active turn changed asynchronously before confirmation.
          */
         public void confirmApplied() {
             if (confirmed.compareAndSet(false, true)) {
                 LudoGameBridge bridge = LudoGameBridge.getInstance();
+                if (expectedTurnId > 0L && bridge.getActiveTurnId() > 0L && expectedTurnId != bridge.getActiveTurnId()) {
+                    if (command != null) {
+                        bridge.getPendingNumberStore().markCompleted(command.getRequestId());
+                        bridge.sendErrorResult(command, "STALE_TURN", "Turn changed before dice result could be applied");
+                    }
+                    return;
+                }
                 if (command != null) {
                     bridge.getPendingNumberStore().markCompleted(command.getRequestId());
                     bridge.sendNumberResult(command, value);
@@ -88,6 +105,20 @@ public class LudoGameBridge {
                 } else {
                     String boxId = LudoGameBridge.getBoxIdForChannel(channel);
                     bridge.notifyObservers(channel, boxId, value, false, null);
+                }
+            }
+        }
+
+        /**
+         * Rejects a prepared dice roll (e.g., third six forfeit or stale/duplicate turn event)
+         * so it is never reported as OK to the Controller and cannot be replayed.
+         */
+        public void rejectApplied(@NonNull String errorCode, @NonNull String errorMessage) {
+            if (confirmed.compareAndSet(false, true)) {
+                if (command != null) {
+                    LudoGameBridge bridge = LudoGameBridge.getInstance();
+                    bridge.getPendingNumberStore().markCompleted(command.getRequestId());
+                    bridge.sendErrorResult(command, errorCode, errorMessage);
                 }
             }
         }
@@ -103,6 +134,10 @@ public class LudoGameBridge {
     private volatile int currentActivePlayers = LudoProtocol.DEFAULT_BOX_COUNT;
     private final CopyOnWriteArrayList<String> activeBoxIds = new CopyOnWriteArrayList<>(Arrays.asList("B1", "B2", "B3", "B4"));
     private volatile boolean isGameRunning = false;
+    private volatile long activeTurnId = 0L;
+    private volatile int activeTurnChannel = -1;
+    @Nullable
+    private volatile String activeTurnColor = null;
 
     public static LudoGameBridge getInstance(@NonNull Context context) {
         if (sInstance == null) {
@@ -283,6 +318,25 @@ public class LudoGameBridge {
 
     // --- Two-Phase Dice Roll Interception & NUMBER_RESULT Delivery ---
 
+    public void onActiveTurnChanged(long turnId, int activeChannel, @Nullable String activeColor) {
+        this.activeTurnId = turnId;
+        this.activeTurnChannel = activeChannel;
+        this.activeTurnColor = activeColor;
+    }
+
+    public long getActiveTurnId() {
+        return activeTurnId;
+    }
+
+    public int getActiveTurnChannel() {
+        return activeTurnChannel;
+    }
+
+    @Nullable
+    public String getActiveTurnColor() {
+        return activeTurnColor;
+    }
+
     /**
      * Step 1: Prepares the dice roll for the rolling channel.
      * Polls the next pending command if available, or retains fallbackRandom.
@@ -291,6 +345,15 @@ public class LudoGameBridge {
      */
     @NonNull
     public AppliedRoll prepareDiceRoll(int channel, int fallbackRandom) {
+        return prepareDiceRollForTurn(-1L, channel, fallbackRandom);
+    }
+
+    /**
+     * Turn-scoped variant of prepareDiceRoll() that binds the prepared roll to a specific turn ID
+     * so asynchronous Controller results can never leak or commit into a different player's turn.
+     */
+    @NonNull
+    public AppliedRoll prepareDiceRollForTurn(long expectedTurnId, int channel, int fallbackRandom) {
         PendingNumberStore.PendingCommand cmd = pendingNumberStore.pollForChannel(channel);
         if (cmd != null) {
             Log.i(TAG, "Prepared intercepted dice roll for channel " + channel + " (" + cmd.getBoxId() + "): value " + cmd.getValue() + " (reqId: " + cmd.getRequestId() + ")");
@@ -307,9 +370,9 @@ public class LudoGameBridge {
             } catch (Exception e) {
                 Log.w(TAG, "Failed sending APPLYING notification: " + e.getMessage());
             }
-            return new AppliedRoll(cmd.getValue(), channel, cmd);
+            return new AppliedRoll(cmd.getValue(), channel, expectedTurnId, cmd);
         } else {
-            return new AppliedRoll(fallbackRandom, channel, null);
+            return new AppliedRoll(fallbackRandom, channel, expectedTurnId, null);
         }
     }
 
@@ -323,6 +386,35 @@ public class LudoGameBridge {
         return roll.getValue();
     }
 
+    /**
+     * Prepares and validates a Controller/fallback roll against the centralized TurnSixRuleValidator
+     * before confirming or rejecting it. Guarantees third-six and stale/duplicate rejections.
+     */
+    @NonNull
+    public com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.ValidationResult consumeControllerRollWithValidation(
+            @NonNull com.vinaykpro.ludoking.cheating.TurnSixRuleValidator validator,
+            long expectedTurnId,
+            @Nullable String playerColor,
+            int channel,
+            int fallbackRandom
+    ) {
+        long rollEventId = validator.beginRollEvent();
+        AppliedRoll roll = prepareDiceRollForTurn(expectedTurnId, channel, fallbackRandom);
+        com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.RollSource source =
+                roll.isFromController()
+                        ? com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.RollSource.CONTROLLER
+                        : com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.RollSource.RANDOM;
+        String reqId = roll.getCommand() != null ? roll.getCommand().getRequestId() : null;
+        com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.ValidationResult validation =
+                validator.validateAndAcceptRoll(rollEventId, expectedTurnId, playerColor, channel, roll.getValue(), source, reqId);
+        if (validation.accepted) {
+            roll.confirmApplied();
+        } else {
+            roll.rejectApplied(validation.reason.name(), "Dice roll rejected by turn rule: " + validation.reason);
+        }
+        return validation;
+    }
+
     private void sendNumberResult(@NonNull PendingNumberStore.PendingCommand cmd, int value) {
         LudoProtocolMessage resultMsg = LudoProtocolMessage.createNumberResult(
                 cmd.getRequestId(),
@@ -332,6 +424,18 @@ public class LudoGameBridge {
         );
         sendDirectOrBroadcast(cmd.getClientId(), resultMsg);
         Log.i(TAG, "Delivered NUMBER_RESULT: " + resultMsg.toJson());
+    }
+
+    private void sendErrorResult(@NonNull PendingNumberStore.PendingCommand cmd, @NonNull String code, @NonNull String message) {
+        LudoProtocolMessage errMsg = LudoProtocolMessage.createError(
+                cmd.getRequestId(),
+                code,
+                message,
+                cmd.getBoxId(),
+                cmd.getChannel()
+        );
+        sendDirectOrBroadcast(cmd.getClientId(), errMsg);
+        Log.w(TAG, "Rejected Controller dice roll with ERROR: " + errMsg.toJson());
     }
 
     private void sendDirectOrBroadcast(@Nullable String clientId, @NonNull LudoProtocolMessage message) {
@@ -368,6 +472,9 @@ public class LudoGameBridge {
                 pendingNumberStore.clearChannel(ch);
             }
         }
+        this.activeTurnId = 0L;
+        this.activeTurnChannel = -1;
+        this.activeTurnColor = null;
         Log.i(TAG, "Ludo Game Started with " + currentActivePlayers + " players. Active boxes: " + activeBoxIds);
         try {
             LudoHostManager.getInstance(appContext).setActiveBoxes(currentActivePlayers, this.activeBoxIds);
@@ -388,6 +495,9 @@ public class LudoGameBridge {
 
     public void onGameEnded() {
         this.isGameRunning = false;
+        this.activeTurnId = 0L;
+        this.activeTurnChannel = -1;
+        this.activeTurnColor = null;
         this.activeBoxIds.clear();
         this.activeBoxIds.addAll(Arrays.asList("B1", "B2", "B3", "B4"));
         this.pendingNumberStore.clear();

@@ -2672,7 +2672,7 @@
                                         android:layout_marginStart="8dp"
                                         android:layout_weight="1"
                                         android:fontFamily="@font/rcbold"
-                                        android:text="Single Tap on Any Token = 5 (No token moves)"
+                                        android:text="Single Tap on Any Token = Lock 5 (then tap Dice to roll 5)"
                                         android:textColor="#FFFFFF"
                                         android:textSize="11sp" />
                                 </LinearLayout>
@@ -2689,7 +2689,7 @@
                                         android:layout_width="28dp"
                                         android:layout_height="24dp"
                                         android:layout_gravity="center_vertical"
-                                        app:srcCompat="@drawable/arrow_dice_hint_right" />
+                                        app:srcCompat="@drawable/redpiece" />
 
                                     <TextView
                                         android:layout_width="0dp"
@@ -2698,7 +2698,7 @@
                                         android:layout_marginStart="8dp"
                                         android:layout_weight="1"
                                         android:fontFamily="@font/rcbold"
-                                        android:text="Arrow Tap: 1 Tap = Enable | 2 Taps within 5s = Lock Six"
+                                        android:text="Tap Your Token PNG Beside Dice = Enable | Hold Dice &gt;3s = Lock Six"
                                         android:textColor="#FFFFFF"
                                         android:textSize="11sp" />
                                 </LinearLayout>
@@ -2710,16 +2710,16 @@
                                     android:layout_marginTop="8dp"
                                     android:fontFamily="@font/rcnormal"
                                     android:lineSpacingExtra="2dp"
-                                    android:text="• Arrow Single Tap = Enable Ability.
-• Second Arrow Tap Within 5 Seconds = Lock Six.
+                                    android:text="• Tap Your Token PNG Beside Dice = Enable Ability.
+• Hold Dice &gt; 3 Seconds = Lock Six (Max 2 Sixes Per Turn).
 • Upper-left Dice Corner = 1.
 • Upper-right Dice Corner = 2.
 • Lower-left Dice Corner = 3.
 • Lower-right Dice Corner = 4.
-• Single Tap on Any Token = 5.
-• Six Lock Can Be Used Only Once Per Selected Player Per Match.
+• Single Tap on Any Board Token = Lock 5 (then Tap Dice to roll 5).
 • After a locked six, ability stays enabled for the extra turn.
-• Selecting 1–5 disables the ability after the roll."
+• Selecting 1–5 disables the ability after the roll.
+• Max 2 sixes per turn rule applies globally."
                                     android:textColor="#EEEEEE"
                                     android:textSize="10.5sp" />
                             </LinearLayout>

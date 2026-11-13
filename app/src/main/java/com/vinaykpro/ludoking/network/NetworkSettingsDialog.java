@@ -157,20 +157,21 @@ public class NetworkSettingsDialog extends Dialog {
         if (statusText == null) return;
 
         LudoHostManager.ServerState state = hostManager.getState();
-        statusText.setText(state.name());
+        boolean cheatingBlocked = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected();
+        statusText.setText(cheatingBlocked ? state.name() + " (Cheating Active)" : state.name());
 
         switch (state) {
             case LISTENING:
                 statusDot.setBackgroundColor(Color.parseColor("#4CAF50"));
                 startBtn.setEnabled(false);
                 stopBtn.setEnabled(true);
-                restartBtn.setEnabled(true);
+                restartBtn.setEnabled(!cheatingBlocked);
                 break;
             case STOPPED:
                 statusDot.setBackgroundColor(Color.parseColor("#9E9E9E"));
-                startBtn.setEnabled(true);
+                startBtn.setEnabled(!cheatingBlocked);
                 stopBtn.setEnabled(false);
-                restartBtn.setEnabled(true);
+                restartBtn.setEnabled(!cheatingBlocked);
                 break;
             case STARTING:
             case STOPPING:
@@ -181,9 +182,9 @@ public class NetworkSettingsDialog extends Dialog {
                 break;
             case ERROR:
                 statusDot.setBackgroundColor(Color.parseColor("#F44336"));
-                startBtn.setEnabled(true);
+                startBtn.setEnabled(!cheatingBlocked);
                 stopBtn.setEnabled(false);
-                restartBtn.setEnabled(true);
+                restartBtn.setEnabled(!cheatingBlocked);
                 break;
         }
 
