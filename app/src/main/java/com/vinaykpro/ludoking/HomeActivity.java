@@ -67,6 +67,10 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
     // settings layout views
     ImageView stgsbackbtn,stgssharebtn,stgslikebtn,stgsgeturpverifiedbtn,stgssoundonoffbtn,stgsmusiconoffbtn,stgsplaybtn,stgslanguagebtn,stgsselectbtn,stgsviewbtn1,stgsfaqbtn,stgscomposebtn,stgsrulesbtn,stgsviewbtn2,stgsmoregamesbtn,stgslboardbtn,stgsviewbtn3,stgseditbtn,stgsinfobtn,stgsdelaccountbtn,stgsfbbtn,stgsinstabtn,stgstwitterbtn,stgsytbtn,stgsmoregameslongbtn;
     android.widget.CheckBox cheatRed, cheatGreen, cheatYellow, cheatBlue;
+    View cheatLockedContainer, cheatUnlockedContainer;
+    android.widget.Button cheatUnlockBtn;
+    android.widget.SeekBar cheatDurationSeekBar;
+    TextView cheatDurationValueText, cheatRemainingStatusText;
     boolean isSyncingCheatCheckboxes = false;
     // statistics layout views
     ImageView stcsusernamebtn,stcsprofpic,stcsbackbtn,stcseditprofile,stcslgwfb,stcslgwggl,stcslgwpg,stcsfshare;
@@ -576,11 +580,55 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
             networkSettingsBtn.setOnClickListener(openNetworkListener);
         }
 
-        // Setup Player Cheating Selection checkboxes
+        // Setup Player Cheating Selection password gate, 1-10 games slider, and checkboxes
+        cheatLockedContainer = findViewById(R.id.cheat_locked_container);
+        cheatUnlockedContainer = findViewById(R.id.cheat_unlocked_container);
+        cheatUnlockBtn = findViewById(R.id.cheat_unlock_btn);
+        cheatDurationSeekBar = findViewById(R.id.cheat_duration_seekbar);
+        cheatDurationValueText = findViewById(R.id.cheat_duration_value_text);
+        cheatRemainingStatusText = findViewById(R.id.cheat_remaining_status_text);
         cheatRed = findViewById(R.id.cheat_cb_red);
         cheatGreen = findViewById(R.id.cheat_cb_green);
         cheatYellow = findViewById(R.id.cheat_cb_yellow);
         cheatBlue = findViewById(R.id.cheat_cb_blue);
+
+        View.OnClickListener openCheatUnlockListener = clickedView -> {
+            giveClickSound();
+            showCheatPasswordDialog();
+        };
+        if (cheatUnlockBtn != null) {
+            cheatUnlockBtn.setOnClickListener(openCheatUnlockListener);
+        }
+        if (cheatLockedContainer != null) {
+            cheatLockedContainer.setOnClickListener(openCheatUnlockListener);
+        }
+        if (cheatDurationSeekBar != null) {
+            cheatDurationSeekBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) {
+                    int games = progress + com.vinaykpro.ludoking.cheating.PlayerCheatingManager.MIN_DURATION_GAMES;
+                    if (cheatDurationValueText != null) {
+                        cheatDurationValueText.setText(games == 1 ? "1 Game" : (games + " Games"));
+                    }
+                    if (fromUser && !isSyncingCheatCheckboxes) {
+                        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm =
+                                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+                        if (!cm.setDurationGames(games)) {
+                            syncCheatingCheckboxesUi();
+                        } else {
+                            updateCheatRemainingStatusText(cm);
+                        }
+                    }
+                }
+
+                @Override
+                public void onStartTrackingTouch(android.widget.SeekBar seekBar) {}
+
+                @Override
+                public void onStopTrackingTouch(android.widget.SeekBar seekBar) {}
+            });
+        }
+
         syncCheatingCheckboxesUi();
 
         attachCheatCheckboxListener(cheatRed, "red");
@@ -2019,6 +2067,7 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
     private void initViews() {
 
         sharedPreferences = getSharedPreferences("LudoModUser",MODE_PRIVATE);
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager.init(this);
 
         isMusicOn = sharedPreferences.getBoolean("music",true);
         isSoundOn = sharedPreferences.getBoolean("sound",true);
@@ -2519,6 +2568,13 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
             if (isSyncingCheatCheckboxes) return;
             com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatManager =
                     com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+            if (!cheatManager.isFeatureUnlocked()) {
+                isSyncingCheatCheckboxes = true;
+                btn.setChecked(cheatManager.isPlayerSelected(color));
+                isSyncingCheatCheckboxes = false;
+                showCheatPasswordDialog();
+                return;
+            }
             if (!cheatManager.setPlayerSelected(color, isChecked)) {
                 isSyncingCheatCheckboxes = true;
                 btn.setChecked(cheatManager.isPlayerSelected(color));
@@ -2526,15 +2582,91 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
                 isSyncingCheatCheckboxes = false;
                 return;
             }
+            updateCheatRemainingStatusText(cheatManager);
             handleCheatingSelectionChanged();
         });
+    }
+
+    private void showCheatPasswordDialog() {
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm =
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        if (cm.isFeatureUnlocked()) {
+            syncCheatingCheckboxesUi();
+            return;
+        }
+        final android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_cheat_password);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            dialog.getWindow().setLayout((int) (pxWidth * 0.85), android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+
+        final EditText passwordInput = dialog.findViewById(R.id.cheatPasswordInput);
+        final TextView errorText = dialog.findViewById(R.id.cheatPasswordErrorText);
+        final android.widget.Button cancelBtn = dialog.findViewById(R.id.cheatPasswordCancelBtn);
+        final android.widget.Button unlockBtn = dialog.findViewById(R.id.cheatPasswordUnlockBtn);
+
+        Runnable submitAttempt = () -> {
+            String entered = passwordInput != null && passwordInput.getText() != null
+                    ? passwordInput.getText().toString()
+                    : "";
+            if (cm.verifyAndUnlock(entered)) {
+                giveClickSound();
+                dialog.dismiss();
+                syncCheatingCheckboxesUi();
+            } else {
+                if (errorText != null) {
+                    errorText.setVisibility(View.VISIBLE);
+                }
+                if (passwordInput != null) {
+                    passwordInput.setText("");
+                }
+            }
+        };
+
+        if (unlockBtn != null) {
+            unlockBtn.setOnClickListener(v -> submitAttempt.run());
+        }
+        if (cancelBtn != null) {
+            cancelBtn.setOnClickListener(v -> dialog.dismiss());
+        }
+        if (passwordInput != null) {
+            passwordInput.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    submitAttempt.run();
+                    return true;
+                }
+                return false;
+            });
+        }
+        dialog.show();
     }
 
     private void syncCheatingCheckboxesUi() {
         com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm =
                 com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        boolean unlocked = cm.isFeatureUnlocked();
+        if (cheatLockedContainer != null) {
+            cheatLockedContainer.setVisibility(unlocked ? View.GONE : View.VISIBLE);
+        }
+        if (cheatUnlockedContainer != null) {
+            cheatUnlockedContainer.setVisibility(unlocked ? View.VISIBLE : View.GONE);
+        }
+        if (!unlocked) {
+            return;
+        }
         boolean locked = cm.isMatchActive();
+        int duration = cm.getDurationGames();
         isSyncingCheatCheckboxes = true;
+        if (cheatDurationSeekBar != null) {
+            cheatDurationSeekBar.setProgress(duration - com.vinaykpro.ludoking.cheating.PlayerCheatingManager.MIN_DURATION_GAMES);
+            cheatDurationSeekBar.setEnabled(!locked);
+            cheatDurationSeekBar.setAlpha(locked ? 0.5f : 1.0f);
+        }
+        if (cheatDurationValueText != null) {
+            cheatDurationValueText.setText(duration == 1 ? "1 Game" : (duration + " Games"));
+        }
         if (cheatRed != null) {
             cheatRed.setChecked(cm.isPlayerSelected("red"));
             cheatRed.setEnabled(!locked);
@@ -2555,7 +2687,30 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
             cheatBlue.setEnabled(!locked);
             cheatBlue.setAlpha(locked ? 0.5f : 1.0f);
         }
+        updateCheatRemainingStatusText(cm);
         isSyncingCheatCheckboxes = false;
+    }
+
+    private void updateCheatRemainingStatusText(com.vinaykpro.ludoking.cheating.PlayerCheatingManager cm) {
+        if (cheatRemainingStatusText == null) return;
+        StringBuilder sb = new StringBuilder();
+        String[][] labels = {{"red", "Red"}, {"green", "Green"}, {"yellow", "Yellow"}, {"blue", "Blue"}};
+        for (String[] pair : labels) {
+            if (cm.isPlayerSelected(pair[0])) {
+                int rem = cm.getRemainingGames(pair[0]);
+                if (rem > 0) {
+                    if (sb.length() > 0) sb.append(", ");
+                    sb.append(pair[1]).append(" (").append(rem).append(rem == 1 ? " game left)" : " games left)");
+                }
+            }
+        }
+        if (sb.length() > 0) {
+            cheatRemainingStatusText.setText("Remaining: " + sb.toString());
+            cheatRemainingStatusText.setVisibility(View.VISIBLE);
+        } else {
+            cheatRemainingStatusText.setText("");
+            cheatRemainingStatusText.setVisibility(View.GONE);
+        }
     }
 
     private void restoreControllerIfCheatingInactive() {

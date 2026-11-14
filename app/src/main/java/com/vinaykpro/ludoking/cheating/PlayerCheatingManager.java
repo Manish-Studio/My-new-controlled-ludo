@@ -1,5 +1,7 @@
 package com.vinaykpro.ludoking.cheating;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.SystemClock;
 
 import androidx.annotation.NonNull;
@@ -13,19 +15,97 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Manages the Player Cheating Selection feature state, gestures, priority dispatching,
- * and Controller blocking rules across the Ludo game lifecycle.
- *
- * All checkboxes and state are OFF by default, reset upon match end or app restart,
- * and strictly isolated per-player during gameplay.
+ * Manages the Player Cheating Selection feature state, password access gate,
+ * persistent per-player game-duration tracking (1-10 games), gestures,
+ * priority dispatching, and Controller blocking rules across the Ludo game lifecycle.
  */
 public class PlayerCheatingManager {
 
     private static final String TAG = "PlayerCheatingManager";
     public static final long DICE_LONG_PRESS_THRESHOLD_MS = 3000L;
 
+    public static final int MIN_DURATION_GAMES = 1;
+    public static final int MAX_DURATION_GAMES = 10;
+    public static final int DEFAULT_DURATION_GAMES = 1;
+
+    private static final String FEATURE_ACCESS_CODE = "3507";
+    private static final String PREFS_NAME = "LudoModUser";
+    private static final String KEY_UNLOCKED = "cheat_section_unlocked";
+    private static final String KEY_DURATION_GAMES = "cheat_duration_games";
+    private static final String KEY_SELECTED_PREFIX = "cheat_selected_";
+    private static final String KEY_REMAINING_PREFIX = "cheat_remaining_";
+
+    private static final String[] ALL_COLORS = {"red", "green", "yellow", "blue"};
+
     public interface TimeSource {
         long elapsedRealtime();
+    }
+
+    /**
+     * Abstraction over local preference storage so Android runtime uses SharedPreferences
+     * ("LudoModUser") and JVM unit tests can simulate persistence across app restarts.
+     */
+    public interface PersistenceStore {
+        boolean getBoolean(@NonNull String key, boolean defaultValue);
+        int getInt(@NonNull String key, int defaultValue);
+        void putBoolean(@NonNull String key, boolean value);
+        void putInt(@NonNull String key, int value);
+    }
+
+    public static final class InMemoryPersistenceStore implements PersistenceStore {
+        private final Map<String, Boolean> booleans = new HashMap<>();
+        private final Map<String, Integer> ints = new HashMap<>();
+
+        @Override
+        public synchronized boolean getBoolean(@NonNull String key, boolean defaultValue) {
+            Boolean v = booleans.get(key);
+            return v != null ? v : defaultValue;
+        }
+
+        @Override
+        public synchronized int getInt(@NonNull String key, int defaultValue) {
+            Integer v = ints.get(key);
+            return v != null ? v : defaultValue;
+        }
+
+        @Override
+        public synchronized void putBoolean(@NonNull String key, boolean value) {
+            booleans.put(key, value);
+        }
+
+        @Override
+        public synchronized void putInt(@NonNull String key, int value) {
+            ints.put(key, value);
+        }
+    }
+
+    private static final class SharedPreferencesPersistenceStore implements PersistenceStore {
+        private final SharedPreferences prefs;
+
+        SharedPreferencesPersistenceStore(@NonNull Context context) {
+            this.prefs = context.getApplicationContext()
+                    .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        }
+
+        @Override
+        public boolean getBoolean(@NonNull String key, boolean defaultValue) {
+            return prefs.getBoolean(key, defaultValue);
+        }
+
+        @Override
+        public int getInt(@NonNull String key, int defaultValue) {
+            return prefs.getInt(key, defaultValue);
+        }
+
+        @Override
+        public void putBoolean(@NonNull String key, boolean value) {
+            prefs.edit().putBoolean(key, value).apply();
+        }
+
+        @Override
+        public void putInt(@NonNull String key, int value) {
+            prefs.edit().putInt(key, value).apply();
+        }
     }
 
     private static final TimeSource SYSTEM_ELAPSED_TIME_SOURCE = SystemClock::elapsedRealtime;
@@ -35,6 +115,14 @@ public class PlayerCheatingManager {
 
     public static PlayerCheatingManager getInstance() {
         return INSTANCE;
+    }
+
+    /**
+     * Binds Android SharedPreferences persistence and loads saved unlock/duration/player state.
+     * Safe to call multiple times from LudoApplication, HomeActivity, and MainActivity.
+     */
+    public static void init(@NonNull Context context) {
+        INSTANCE.attachSharedPreferencesIfNeeded(context);
     }
 
     /**
@@ -64,14 +152,25 @@ public class PlayerCheatingManager {
         }
     }
 
-    // Selected colors from Settings (ephemeral in memory; never saved to disk, resets on match end / restart)
-    private final Set<String> selectedColors = Collections.synchronizedSet(new HashSet<>());
+    private volatile PersistenceStore persistenceStore = new InMemoryPersistenceStore();
+    private boolean sharedPrefsBound = false;
 
-    // Per-player live state
+    private boolean isFeatureUnlocked = false;
+    private int durationGames = DEFAULT_DURATION_GAMES;
+
+    // Selected colors and independent remaining game counts per player
+    private final Set<String> selectedColors = Collections.synchronizedSet(new HashSet<>());
+    private final Map<String, Integer> remainingGamesByColor = Collections.synchronizedMap(new HashMap<>());
+
+    // Players participating in the currently active match session (decremented independently once on match end)
+    private final Set<String> activeSessionColors = new HashSet<>();
+
+    // Per-player live turn state
     private final Map<String, PlayerState> playerStates = Collections.synchronizedMap(new HashMap<>());
 
-    // Active match flag and session counter (prevents delayed onDestroy from clobbering a new match)
+    // Active match flag and session counter (prevents duplicate decrements or stale onDestroy clobbering replay)
     private volatile boolean isMatchActive = false;
+    private boolean hasConsumedActiveSession = false;
     private long matchSessionId = 0L;
 
     // Monotonic elapsed clock source (defaults to Android SystemClock.elapsedRealtime())
@@ -83,10 +182,101 @@ public class PlayerCheatingManager {
 
     private void initStates() {
         playerStates.clear();
-        playerStates.put("red", new PlayerState("red"));
-        playerStates.put("green", new PlayerState("green"));
-        playerStates.put("yellow", new PlayerState("yellow"));
-        playerStates.put("blue", new PlayerState("blue"));
+        remainingGamesByColor.clear();
+        for (String color : ALL_COLORS) {
+            playerStates.put(color, new PlayerState(color));
+            remainingGamesByColor.put(color, 0);
+        }
+    }
+
+    private synchronized void attachSharedPreferencesIfNeeded(@NonNull Context context) {
+        if (sharedPrefsBound) {
+            return;
+        }
+        persistenceStore = new SharedPreferencesPersistenceStore(context);
+        sharedPrefsBound = true;
+        loadFromPersistenceInternal();
+    }
+
+    public synchronized void setPersistenceStore(@Nullable PersistenceStore customStore) {
+        this.persistenceStore = customStore != null ? customStore : new InMemoryPersistenceStore();
+        this.sharedPrefsBound = false;
+        loadFromPersistenceInternal();
+    }
+
+    public synchronized void reloadFromPersistenceForTest() {
+        isMatchActive = false;
+        hasConsumedActiveSession = false;
+        activeSessionColors.clear();
+        for (PlayerState s : playerStates.values()) {
+            s.resetFull();
+        }
+        loadFromPersistenceInternal();
+    }
+
+    public synchronized void resetForTest() {
+        isMatchActive = false;
+        hasConsumedActiveSession = false;
+        matchSessionId = 0L;
+        isFeatureUnlocked = false;
+        durationGames = DEFAULT_DURATION_GAMES;
+        selectedColors.clear();
+        activeSessionColors.clear();
+        for (String color : ALL_COLORS) {
+            remainingGamesByColor.put(color, 0);
+            PlayerState state = playerStates.get(color);
+            if (state != null) state.resetFull();
+        }
+        persistUnlocked(false);
+        persistDurationGames(DEFAULT_DURATION_GAMES);
+        for (String color : ALL_COLORS) {
+            persistPlayerState(color, false, 0);
+        }
+    }
+
+    private void loadFromPersistenceInternal() {
+        isFeatureUnlocked = persistenceStore.getBoolean(KEY_UNLOCKED, false);
+        durationGames = clampDuration(persistenceStore.getInt(KEY_DURATION_GAMES, DEFAULT_DURATION_GAMES));
+        selectedColors.clear();
+        for (String color : ALL_COLORS) {
+            boolean savedSelected = persistenceStore.getBoolean(KEY_SELECTED_PREFIX + color, false);
+            int savedRemaining = Math.max(0, persistenceStore.getInt(KEY_REMAINING_PREFIX + color, 0));
+            if (savedSelected && savedRemaining > 0) {
+                selectedColors.add(color);
+                remainingGamesByColor.put(color, savedRemaining);
+            } else {
+                remainingGamesByColor.put(color, 0);
+                if (savedSelected || savedRemaining != 0) {
+                    persistPlayerState(color, false, 0);
+                }
+            }
+        }
+    }
+
+    private void persistUnlocked(boolean unlocked) {
+        persistenceStore.putBoolean(KEY_UNLOCKED, unlocked);
+    }
+
+    private void persistDurationGames(int games) {
+        persistenceStore.putInt(KEY_DURATION_GAMES, games);
+    }
+
+    private void persistPlayerState(@NonNull String color, boolean selected, int remainingGames) {
+        persistenceStore.putBoolean(KEY_SELECTED_PREFIX + color, selected);
+        persistenceStore.putInt(KEY_REMAINING_PREFIX + color, Math.max(0, remainingGames));
+    }
+
+    private static int clampDuration(int games) {
+        if (games < MIN_DURATION_GAMES) return MIN_DURATION_GAMES;
+        if (games > MAX_DURATION_GAMES) return MAX_DURATION_GAMES;
+        return games;
+    }
+
+    private static boolean isSupportedColor(@NonNull String normalizedColor) {
+        for (String c : ALL_COLORS) {
+            if (c.equals(normalizedColor)) return true;
+        }
+        return false;
     }
 
     public synchronized void setTimeSource(@Nullable TimeSource customTimeSource) {
@@ -102,14 +292,66 @@ public class PlayerCheatingManager {
         return color.trim().toLowerCase(Locale.US);
     }
 
-    // --- Settings Configuration API ---
+    // --- Password Access Gate API ---
 
-    public boolean isPlayerSelected(@Nullable String color) {
+    public synchronized boolean isFeatureUnlocked() {
+        return isFeatureUnlocked;
+    }
+
+    /**
+     * Verifies the first-time access password without exposing or logging the secret or attempt.
+     */
+    public synchronized boolean verifyAndUnlock(@Nullable String enteredPassword) {
+        if (FEATURE_ACCESS_CODE.equals(enteredPassword)) {
+            isFeatureUnlocked = true;
+            persistUnlocked(true);
+            return true;
+        }
+        return false;
+    }
+
+    // --- Duration & Settings Configuration API ---
+
+    public synchronized int getDurationGames() {
+        return durationGames;
+    }
+
+    /**
+     * Updates the 1-10 game duration slider value and applies it to currently enabled players.
+     * Blocked while a match is active.
+     */
+    public synchronized boolean setDurationGames(int games) {
+        if (isMatchActive) {
+            return false;
+        }
+        int clamped = clampDuration(games);
+        durationGames = clamped;
+        persistDurationGames(clamped);
+        for (String color : ALL_COLORS) {
+            if (selectedColors.contains(color)) {
+                remainingGamesByColor.put(color, clamped);
+                persistPlayerState(color, true, clamped);
+            }
+        }
+        return true;
+    }
+
+    public synchronized int getRemainingGames(@Nullable String color) {
+        String c = normalizeColor(color);
+        if (!selectedColors.contains(c)) {
+            return 0;
+        }
+        Integer rem = remainingGamesByColor.get(c);
+        return rem != null ? Math.max(0, rem) : 0;
+    }
+
+    public synchronized boolean isPlayerSelected(@Nullable String color) {
         return selectedColors.contains(normalizeColor(color));
     }
 
     /**
      * Enables or disables cheating selection for a color before a match starts.
+     * When enabled, initializes that player's remaining match count from the current slider duration.
      * Modifications are blocked while a match is active to avoid mid-match state or networking conflicts.
      *
      * @return true if the selection was updated, false if ignored (invalid color or match active)
@@ -120,17 +362,21 @@ public class PlayerCheatingManager {
             return false;
         }
         String c = normalizeColor(color);
-        if (c.isEmpty()) return false;
+        if (!isSupportedColor(c)) return false;
         if (selected) {
             selectedColors.add(c);
+            remainingGamesByColor.put(c, durationGames);
+            persistPlayerState(c, true, durationGames);
         } else {
             selectedColors.remove(c);
+            remainingGamesByColor.put(c, 0);
+            persistPlayerState(c, false, 0);
         }
         logD(TAG, "Player " + c + " selected=" + selected + ", activeSelections=" + selectedColors);
         return true;
     }
 
-    public boolean isAnyPlayerSelected() {
+    public synchronized boolean isAnyPlayerSelected() {
         return !selectedColors.isEmpty();
     }
 
@@ -148,9 +394,26 @@ public class PlayerCheatingManager {
         return matchSessionId;
     }
 
+    public synchronized boolean isSessionActive(long sessionId) {
+        return isMatchActive && sessionId == this.matchSessionId && !hasConsumedActiveSession;
+    }
+
     public synchronized void onMatchStarted() {
         matchSessionId++;
         isMatchActive = true;
+        hasConsumedActiveSession = false;
+        activeSessionColors.clear();
+        for (String color : ALL_COLORS) {
+            if (selectedColors.contains(color)) {
+                int rem = getRemainingGames(color);
+                if (rem <= 0) {
+                    rem = durationGames;
+                    remainingGamesByColor.put(color, rem);
+                    persistPlayerState(color, true, rem);
+                }
+                activeSessionColors.add(color);
+            }
+        }
         for (PlayerState s : playerStates.values()) {
             s.resetFull();
         }
@@ -159,27 +422,63 @@ public class PlayerCheatingManager {
 
     /**
      * Ends the match only if the provided session ID matches the currently active match session.
-     * Prevents asynchronous onDestroy() of an old Activity from resetting a newly started replay match.
+     * Ensures one completed/exited match session decrements each active player's remaining count once.
      */
     public synchronized boolean onMatchEndedIfSession(long sessionId) {
-        if (sessionId == this.matchSessionId && isMatchActive) {
-            onMatchEnded();
+        if (sessionId == this.matchSessionId && isMatchActive && !hasConsumedActiveSession) {
+            hasConsumedActiveSession = true;
+            isMatchActive = false;
+            consumeActiveSessionAndResetTransientStates();
             return true;
         }
         return false;
     }
 
     /**
-     * Resets all special states, pending locks, and all four Settings checkboxes to OFF.
-     * Called on any actual match-end or exit path.
+     * Ends an active match session (decrementing once), or resets all selections when called
+     * outside an active match (e.g., legacy test setup/teardown cleanup).
      */
     public synchronized void onMatchEnded() {
+        if (isMatchActive && !hasConsumedActiveSession) {
+            onMatchEndedIfSession(this.matchSessionId);
+            return;
+        }
         isMatchActive = false;
+        hasConsumedActiveSession = false;
+        activeSessionColors.clear();
         selectedColors.clear();
+        durationGames = DEFAULT_DURATION_GAMES;
+        persistDurationGames(DEFAULT_DURATION_GAMES);
+        for (String color : ALL_COLORS) {
+            remainingGamesByColor.put(color, 0);
+            persistPlayerState(color, false, 0);
+        }
         for (PlayerState s : playerStates.values()) {
             s.resetFull();
         }
         logI(TAG, "Match ended. Cleared all cheating states and reset checkboxes to OFF.");
+    }
+
+    private void consumeActiveSessionAndResetTransientStates() {
+        for (String color : activeSessionColors) {
+            int current = remainingGamesByColor.containsKey(color)
+                    ? Math.max(0, remainingGamesByColor.get(color))
+                    : 0;
+            int updated = Math.max(0, current - 1);
+            if (updated == 0) {
+                selectedColors.remove(color);
+                remainingGamesByColor.put(color, 0);
+                persistPlayerState(color, false, 0);
+            } else {
+                remainingGamesByColor.put(color, updated);
+                persistPlayerState(color, true, updated);
+            }
+        }
+        activeSessionColors.clear();
+        for (PlayerState s : playerStates.values()) {
+            s.resetFull();
+        }
+        logI(TAG, "Match session finished. Remaining selections: " + selectedColors);
     }
 
     // --- In-Game Gestures API ---
@@ -309,7 +608,7 @@ public class PlayerCheatingManager {
     /**
      * Checks if the active player has their special ability enabled.
      */
-    public boolean isAbilityActiveForPlayer(@Nullable String activePlayerColor) {
+    public synchronized boolean isAbilityActiveForPlayer(@Nullable String activePlayerColor) {
         String color = normalizeColor(activePlayerColor);
         if (!selectedColors.contains(color)) return false;
         PlayerState state = playerStates.get(color);
@@ -423,17 +722,16 @@ public class PlayerCheatingManager {
     }
 
     private static void logD(String tag, String msg) {
-        // System.out.println(tag + ": " + msg);
+        // Intentionally silent in release/test; never logs secrets
     }
     private static void logI(String tag, String msg) {
-        // System.out.println(tag + ": " + msg);
+        // Intentionally silent in release/test; never logs secrets
     }
     private static void logW(String tag, String msg) {
-        // System.out.println(tag + ": " + msg);
+        // Intentionally silent in release/test; never logs secrets
     }
     private long getCurrentTimeMs() {
         return timeSource.elapsedRealtime();
     }
 
 }
-

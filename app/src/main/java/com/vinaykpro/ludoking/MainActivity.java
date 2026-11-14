@@ -204,8 +204,16 @@ public class MainActivity extends AppCompatActivity {
                 com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this).onGameEnded();
             } catch (Exception ignored) {}
             try {
-                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
-                        .onMatchEndedIfSession(activeCheatMatchSessionId);
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr =
+                        com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+                cheatMgr.onMatchEndedIfSession(activeCheatMatchSessionId);
+                if (!cheatMgr.isAnyPlayerSelected()) {
+                    android.content.SharedPreferences netPrefs =
+                            android.preference.PreferenceManager.getDefaultSharedPreferences(this);
+                    if (netPrefs.getBoolean("network_host_autostart", true)) {
+                        com.vinaykpro.ludoking.network.LudoHostManager.getInstance(this).startHost();
+                    }
+                }
             } catch (Exception ignored) {}
             try {
                 com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.getInstance().resetMatch();
@@ -517,7 +525,9 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         piece.setElevation(currBlock);
                     }
-                    stepSound.pause();
+                    if (stepSound != null && stepSound.isPlaying()) {
+                        stepSound.pause();
+                    }
                     numberOfSteps++;
 
                     boolean isDeadChanceAvailable = false;
@@ -698,7 +708,7 @@ public class MainActivity extends AppCompatActivity {
                     },10);
                     //checkAdjustments(currBlock);
 
-                    if(diceValue == 6 || currWinnerBlock>5 || isDeadChanceAvailable && !isThisPlayerWon) {
+                    if((diceValue == 6 || currWinnerBlock>5 || isDeadChanceAvailable) && !isThisPlayerWon) {
                         isDiceMovableExtraChance = true;
                         if(!isBotPiece) { hintArrow.setVisibility(View.VISIBLE); } else {
                             globalHandler.postDelayed(new Runnable() {
@@ -719,14 +729,8 @@ public class MainActivity extends AppCompatActivity {
 
 
         public boolean check(int diceValue) {
-            if(diceValue == 6)
-            {
-                if(!isAlive || (numberOfSteps+diceValue)<57)
-                {
-                    activeState();
-                    return true;
-                } return false;
-            } else if(isAlive && (numberOfSteps+diceValue)<57 && !hasCompletedItsPurpose && !isThisPlayerWon) {
+            if (com.vinaykpro.ludoking.cheating.LudoMoveValidator.isValidPieceMove(
+                    isAlive, numberOfSteps, diceValue, hasCompletedItsPurpose, isThisPlayerWon)) {
                 activeState();
                 return true;
             } else {
@@ -1976,12 +1980,26 @@ public class MainActivity extends AppCompatActivity {
 
         Bundle extras = getIntent().getExtras();
         nop = extras.getInt("nop");
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager.init(this);
         com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr =
                 com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
-        cheatMgr.onMatchStarted();
-        com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.getInstance().resetMatch();
-        activeCheatMatchSessionId = cheatMgr.getMatchSessionId();
-        hasNotifiedMatchEnd = false;
+        long restoredSessionId = savedInstanceState != null
+                ? savedInstanceState.getLong("active_cheat_session_id", -1L)
+                : -1L;
+        boolean restoredMatchEnd = savedInstanceState != null
+                && savedInstanceState.getBoolean("has_notified_match_end", false);
+        if (savedInstanceState != null && restoredMatchEnd) {
+            activeCheatMatchSessionId = restoredSessionId;
+            hasNotifiedMatchEnd = true;
+        } else if (savedInstanceState != null && cheatMgr.isSessionActive(restoredSessionId)) {
+            activeCheatMatchSessionId = restoredSessionId;
+            hasNotifiedMatchEnd = false;
+        } else {
+            cheatMgr.onMatchStarted();
+            com.vinaykpro.ludoking.cheating.TurnSixRuleValidator.getInstance().resetMatch();
+            activeCheatMatchSessionId = cheatMgr.getMatchSessionId();
+            hasNotifiedMatchEnd = false;
+        }
         try {
             com.vinaykpro.ludoking.network.LudoGameBridge.getInstance(this).onGameStarted(nop);
         } catch (Exception ignored) {}
@@ -2670,6 +2688,13 @@ public class MainActivity extends AppCompatActivity {
             }
             try { congratulationSound.release(); } catch (Exception e) {}
         }
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putLong("active_cheat_session_id", activeCheatMatchSessionId);
+        outState.putBoolean("has_notified_match_end", hasNotifiedMatchEnd);
     }
 
     @Override

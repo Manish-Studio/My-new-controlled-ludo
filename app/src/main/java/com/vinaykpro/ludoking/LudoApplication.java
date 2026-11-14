@@ -23,13 +23,16 @@ public class LudoApplication extends Application {
         sInstance = this;
         Log.i(TAG, "LudoApplication initialized");
 
+        // Initialize persisted Player Cheating Selection before starting Controller host
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager.init(this);
+
         // Initialize application-scoped host manager and game bridge
         hostManager = LudoHostManager.getInstance(this);
 
-        // Auto-start host server in background if enabled
+        // Auto-start host server in background if enabled and no cheating player selection is active
         android.content.SharedPreferences prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(this);
         boolean autoStart = prefs.getBoolean("network_host_autostart", true);
-        if (autoStart) {
+        if (autoStart && !com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected()) {
             Log.i(TAG, "Auto-starting Ludo Host server on port " + LudoHostManager.DEFAULT_PORT);
             hostManager.startHost();
         }

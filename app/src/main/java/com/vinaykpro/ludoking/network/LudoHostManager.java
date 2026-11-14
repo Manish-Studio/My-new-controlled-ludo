@@ -70,6 +70,7 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
     private volatile int configuredPort = DEFAULT_PORT;
     private volatile int activeBoxCount = LudoProtocol.DEFAULT_BOX_COUNT;
     private volatile List<String> activeBoxIds = Arrays.asList("B1", "B2", "B3", "B4");
+    private volatile boolean pendingStartAfterStop = false;
 
     /**
      * Retrieves the Application-scoped singleton instance.
@@ -282,9 +283,11 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
             }
 
             if (state == ServerState.STOPPING) {
-                Log.w(TAG, "Cannot start while server is in STOPPING state. Await completion.");
+                Log.w(TAG, "Server is in STOPPING state. Queuing startHost upon stop completion.");
+                pendingStartAfterStop = true;
                 return;
             }
+            pendingStartAfterStop = false;
 
             lastErrorMessage = null;
             updateState(ServerState.STARTING, "Starting Ludo Host server on port " + configuredPort + "...");
@@ -309,6 +312,7 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
      */
     public void stopHost() {
         synchronized (lifecycleLock) {
+            pendingStartAfterStop = false;
             ServerState state = currentState.get();
             if (state == ServerState.STOPPED || state == ServerState.STOPPING) {
                 Log.d(TAG, "stopHost request ignored. Server is already " + state);
@@ -406,6 +410,15 @@ public class LudoHostManager implements LudoTcpServer.ServerListener {
         nsdHelper.unregisterService();
         updateState(ServerState.STOPPED, "Server stopped");
         notifyClientCountChanged();
+        boolean shouldRestartAfterStop;
+        synchronized (lifecycleLock) {
+            shouldRestartAfterStop = pendingStartAfterStop;
+            pendingStartAfterStop = false;
+        }
+        if (shouldRestartAfterStop
+                && !com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance().isAnyPlayerSelected()) {
+            startHost();
+        }
     }
 
     @Override

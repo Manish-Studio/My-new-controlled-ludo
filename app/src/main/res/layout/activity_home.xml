@@ -2383,7 +2383,7 @@
                     </androidx.constraintlayout.widget.ConstraintLayout>
 
 
-                                    <!-- PLAYER CHEATING SELECTION SECTION -->
+                    <!-- PLAYER CHEATING SELECTION SECTION -->
                     <LinearLayout
                         android:id="@+id/op_cheating_section"
                         android:layout_width="match_parent"
@@ -2403,70 +2403,177 @@
                             android:textSize="13sp"
                             android:textStyle="bold" />
 
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:fontFamily="@font/rcnormal"
-                            android:text="Applies to current match only. All OFF by default. Blocks Controller when active."
-                            android:textColor="#DDDDDD"
-                            android:textSize="10sp" />
-
+                        <!-- Locked View (shown until password unlocked) -->
                         <LinearLayout
+                            android:id="@+id/cheat_locked_container"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
+                            android:background="#1C2A3A"
                             android:gravity="center_vertical"
-                            android:orientation="horizontal">
+                            android:minHeight="48dp"
+                            android:orientation="horizontal"
+                            android:paddingStart="10dp"
+                            android:paddingTop="6dp"
+                            android:paddingEnd="8dp"
+                            android:paddingBottom="6dp">
 
-                            <CheckBox
-                                android:id="@+id/cheat_cb_red"
+                            <TextView
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:buttonTint="#E52521"
-                                android:fontFamily="@font/rcbold"
-                                android:text="Red"
-                                android:textColor="#E52521"
-                                android:textSize="12sp"
-                                android:textStyle="bold" />
+                                android:fontFamily="@font/rcnormal"
+                                android:text="Locked. Enter password to configure."
+                                android:textColor="#DDDDDD"
+                                android:textSize="11.5sp" />
 
-                            <CheckBox
-                                android:id="@+id/cheat_cb_green"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:buttonTint="#00A859"
+                            <Button
+                                android:id="@+id/cheat_unlock_btn"
+                                android:layout_width="wrap_content"
+                                android:layout_height="40dp"
+                                android:backgroundTint="#F5B201"
                                 android:fontFamily="@font/rcbold"
-                                android:text="Green"
-                                android:textColor="#00A859"
-                                android:textSize="12sp"
-                                android:textStyle="bold" />
-
-                            <CheckBox
-                                android:id="@+id/cheat_cb_yellow"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:buttonTint="#FFC107"
-                                android:fontFamily="@font/rcbold"
-                                android:text="Yellow"
-                                android:textColor="#FFC107"
-                                android:textSize="12sp"
-                                android:textStyle="bold" />
-
-                            <CheckBox
-                                android:id="@+id/cheat_cb_blue"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:buttonTint="#007AFF"
-                                android:fontFamily="@font/rcbold"
-                                android:text="Blue"
-                                android:textColor="#007AFF"
-                                android:textSize="12sp"
+                                android:minWidth="72dp"
+                                android:text="Unlock"
+                                android:textColor="#101828"
+                                android:textSize="11.5sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
+
+                        <!-- Unlocked Configuration View -->
+                        <LinearLayout
+                            android:id="@+id/cheat_unlocked_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:id="@+id/cheat_subtitle_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="@font/rcnormal"
+                                android:text="All OFF by default. Active for selected game count. Blocks Controller while enabled."
+                                android:textColor="#DDDDDD"
+                                android:textSize="10sp" />
+
+                            <!-- 1-10 Games Duration Slider -->
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:background="#152232"
+                                android:orientation="vertical"
+                                android:paddingStart="8dp"
+                                android:paddingTop="6dp"
+                                android:paddingEnd="8dp"
+                                android:paddingBottom="4dp">
+
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:gravity="center_vertical"
+                                    android:orientation="horizontal">
+
+                                    <TextView
+                                        android:layout_width="0dp"
+                                        android:layout_height="wrap_content"
+                                        android:layout_weight="1"
+                                        android:fontFamily="@font/rcbold"
+                                        android:text="Duration (1–10 Games)"
+                                        android:textColor="#FFFFFF"
+                                        android:textSize="11.5sp" />
+
+                                    <TextView
+                                        android:id="@+id/cheat_duration_value_text"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:fontFamily="@font/rcbold"
+                                        android:text="1 Game"
+                                        android:textColor="#F5B201"
+                                        android:textSize="12sp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+
+                                <SeekBar
+                                    android:id="@+id/cheat_duration_seekbar"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:max="9"
+                                    android:minHeight="36dp"
+                                    android:progress="0"
+                                    android:progressTint="#F5B201"
+                                    android:thumbTint="#F5B201" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
+
+                                <CheckBox
+                                    android:id="@+id/cheat_cb_red"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:buttonTint="#E52521"
+                                    android:fontFamily="@font/rcbold"
+                                    android:text="Red"
+                                    android:textColor="#E52521"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold" />
+
+                                <CheckBox
+                                    android:id="@+id/cheat_cb_green"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:buttonTint="#00A859"
+                                    android:fontFamily="@font/rcbold"
+                                    android:text="Green"
+                                    android:textColor="#00A859"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold" />
+
+                                <CheckBox
+                                    android:id="@+id/cheat_cb_yellow"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:buttonTint="#FFC107"
+                                    android:fontFamily="@font/rcbold"
+                                    android:text="Yellow"
+                                    android:textColor="#FFC107"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold" />
+
+                                <CheckBox
+                                    android:id="@+id/cheat_cb_blue"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:buttonTint="#007AFF"
+                                    android:fontFamily="@font/rcbold"
+                                    android:text="Blue"
+                                    android:textColor="#007AFF"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold" />
+                            </LinearLayout>
+
+                            <TextView
+                                android:id="@+id/cheat_remaining_status_text"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="@font/rcnormal"
+                                android:text=""
+                                android:textColor="#CCCCCC"
+                                android:textSize="10sp"
+                                android:visibility="gone" />
 
                         <!-- LUDO BOARD-STYLE VISUAL GUIDE -->
                         <androidx.cardview.widget.CardView
@@ -2724,8 +2831,9 @@
                                     android:textSize="10.5sp" />
                             </LinearLayout>
                         </androidx.cardview.widget.CardView>
+                        </LinearLayout>
                     </LinearLayout>
-</LinearLayout>
+                </LinearLayout>
             </ScrollView>
 
             <androidx.constraintlayout.widget.ConstraintLayout
