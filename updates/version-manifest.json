@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "apps": {
+    "ludo_king": {
+      "appId": "ludo_king",
+      "packageName": "com.aistudio.ludoking.kxpvrz",
+      "displayName": "Ludo King",
+      "latestVersionName": "1.0",
+      "latestVersionCode": 1,
+      "minSupportedVersionCode": 1,
+      "apkUrl": "https://github.com/<OWNER>/<REPO>/releases/download/ludo-v1.0.0/ludo-king-v1.0.0-release.apk",
+      "sha256": "<64-HEX-CHAR-SHA256-OF-LUDO-APK>",
+      "releaseNotes": "Initial release baseline.",
+      "releaseDate": "2026-01-01",
+      "mandatory": false
+    },
+    "ludo_controller": {
+      "appId": "ludo_controller",
+      "packageName": "<CONTROLLER_PACKAGE_NAME>",
+      "displayName": "Ludo Controller",
+      "latestVersionName": "1.0",
+      "latestVersionCode": 1,
+      "minSupportedVersionCode": 1,
+      "apkUrl": "https://github.com/<OWNER>/<REPO>/releases/download/controller-v1.0.0/ludo-controller-v1.0.0-release.apk",
+      "sha256": "<64-HEX-CHAR-SHA256-OF-CONTROLLER-APK>",
+      "releaseNotes": "Initial Ludo Controller release baseline.",
+      "releaseDate": "2026-01-01",
+      "mandatory": false
+    }
+  }
+}

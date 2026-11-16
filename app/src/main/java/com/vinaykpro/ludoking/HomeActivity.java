@@ -72,6 +72,9 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
     android.widget.SeekBar cheatDurationSeekBar;
     TextView cheatDurationValueText, cheatRemainingStatusText;
     boolean isSyncingCheatCheckboxes = false;
+    TextView updateInstalledVersionText, updateLatestVersionText, updateStatusText;
+    android.widget.Button checkUpdatesBtn;
+    com.vinaykpro.ludoking.update.AppUpdateDialog activeUpdateDialog;
     // statistics layout views
     ImageView stcsusernamebtn,stcsprofpic,stcsbackbtn,stcseditprofile,stcslgwfb,stcslgwggl,stcslgwpg,stcsfshare;
     TextView stcsusernametextview;
@@ -243,6 +246,8 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         ad1.setImageDrawable(animationDrawable);
         animationDrawable.setOneShot(false); // Set to true if you want to run the animation only once
         animationDrawable.start();
+
+        getWindow().getDecorView().post(() -> triggerAutomaticUpdateCheckIfDue());
 
 
 
@@ -445,6 +450,7 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
             public void onClick(View view) {
                 giveClickSound();
                 syncCheatingCheckboxesUi();
+                syncAppUpdateUi(null);
                 settingspopupbg.setScaleX(0.0f);settingspopupbg.setScaleY(0.0f);
                 settingspopupbg.setVisibility(View.VISIBLE);
                 settingspopupbg.animate().scaleX(1.0f).scaleY(1.0f).setInterpolator(new OvershootInterpolator()).setDuration(200).setListener(new AnimatorListenerAdapter() {
@@ -635,6 +641,18 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         attachCheatCheckboxListener(cheatGreen, "green");
         attachCheatCheckboxListener(cheatYellow, "yellow");
         attachCheatCheckboxListener(cheatBlue, "blue");
+
+        updateInstalledVersionText = findViewById(R.id.update_installed_version_text);
+        updateLatestVersionText = findViewById(R.id.update_latest_version_text);
+        updateStatusText = findViewById(R.id.update_status_text);
+        checkUpdatesBtn = findViewById(R.id.check_updates_btn);
+        syncAppUpdateUi(null);
+        if (checkUpdatesBtn != null) {
+            checkUpdatesBtn.setOnClickListener(clickedView -> {
+                giveClickSound();
+                triggerManualUpdateCheck();
+            });
+        }
 
         stgssharebtn.setOnClickListener(noInternetOnClick);stgslikebtn.setOnClickListener(noInternetOnClick);stgsgeturpverifiedbtn.setOnClickListener(noInternetOnClick);stgsplaybtn.setOnClickListener(noInternetOnClick);stgslanguagebtn.setOnClickListener(noInternetOnClick);stgsselectbtn.setOnClickListener(noInternetOnClick);stgsviewbtn1.setOnClickListener(noInternetOnClick);stgsfaqbtn.setOnClickListener(noInternetOnClick);stgscomposebtn.setOnClickListener(noInternetOnClick);stgsrulesbtn.setOnClickListener(noInternetOnClick);stgsviewbtn2.setOnClickListener(noInternetOnClick);stgsmoregamesbtn.setOnClickListener(noInternetOnClick);stgslboardbtn.setOnClickListener(noInternetOnClick);stgsviewbtn3.setOnClickListener(noInternetOnClick);stgseditbtn.setOnClickListener(noInternetOnClick);stgsinfobtn.setOnClickListener(openNetworkListener);stgsdelaccountbtn.setOnClickListener(noInternetOnClick);stgsfbbtn.setOnClickListener(noInternetOnClick);stgsinstabtn.setOnClickListener(noInternetOnClick);stgstwitterbtn.setOnClickListener(noInternetOnClick);stgsytbtn.setOnClickListener(noInternetOnClick);stgsmoregameslongbtn.setOnClickListener(noInternetOnClick);
 
@@ -2560,6 +2578,82 @@ public class HomeActivity extends AppCompatActivity implements View.OnClickListe
         }
         syncCheatingCheckboxesUi();
         restoreControllerIfCheatingInactive();
+        syncAppUpdateUi(null);
+        if (activeUpdateDialog != null) {
+            activeUpdateDialog.onActivityResumed();
+        } else {
+            com.vinaykpro.ludoking.update.AppUpdateManager.getInstance(this)
+                    .resumePendingInstallIfPermitted(this, null);
+        }
+    }
+
+    private void syncAppUpdateUi(@Nullable com.vinaykpro.ludoking.update.UpdateEvaluator.EvaluationResult evalOverride) {
+        com.vinaykpro.ludoking.update.AppUpdateManager mgr =
+                com.vinaykpro.ludoking.update.AppUpdateManager.getInstance(this);
+        if (updateInstalledVersionText != null) {
+            updateInstalledVersionText.setText(String.format(
+                    java.util.Locale.US,
+                    "Installed: v%s (%d)",
+                    mgr.getInstalledVersionName(),
+                    mgr.getInstalledVersionCode()
+            ));
+        }
+        com.vinaykpro.ludoking.update.UpdateEvaluator.EvaluationResult eval =
+                evalOverride != null ? evalOverride : mgr.getLatestEvaluation();
+        if (updateLatestVersionText != null) {
+            if (eval != null && eval.releaseInfo != null) {
+                updateLatestVersionText.setText(String.format(
+                        java.util.Locale.US,
+                        "Latest: v%s (%d)",
+                        eval.releaseInfo.latestVersionName,
+                        eval.releaseInfo.latestVersionCode
+                ));
+            } else {
+                updateLatestVersionText.setText("Latest: Not checked");
+            }
+        }
+        if (updateStatusText != null) {
+            updateStatusText.setText("Status: " + mgr.getLastCheckStatus());
+        }
+    }
+
+    private void triggerAutomaticUpdateCheckIfDue() {
+        com.vinaykpro.ludoking.update.AppUpdateManager mgr =
+                com.vinaykpro.ludoking.update.AppUpdateManager.getInstance(this);
+        mgr.checkAutomaticallyIfDue((success, evaluation, statusText) -> {
+            if (isFinishing() || isDestroyed()) return;
+            syncAppUpdateUi(evaluation);
+            if (evaluation != null && evaluation.shouldShowAutoPrompt
+                    && (activeUpdateDialog == null || !activeUpdateDialog.isShowing())) {
+                activeUpdateDialog = new com.vinaykpro.ludoking.update.AppUpdateDialog(this, mgr, evaluation);
+                activeUpdateDialog.show();
+            }
+        });
+    }
+
+    private void triggerManualUpdateCheck() {
+        com.vinaykpro.ludoking.update.AppUpdateManager mgr =
+                com.vinaykpro.ludoking.update.AppUpdateManager.getInstance(this);
+        if (checkUpdatesBtn != null) {
+            checkUpdatesBtn.setEnabled(false);
+            checkUpdatesBtn.setText("Checking...");
+        }
+        if (updateStatusText != null) {
+            updateStatusText.setText("Status: Checking GitHub Releases manifest...");
+        }
+        mgr.checkManually((success, evaluation, statusText) -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (checkUpdatesBtn != null) {
+                checkUpdatesBtn.setEnabled(true);
+                checkUpdatesBtn.setText("Check Updates");
+            }
+            syncAppUpdateUi(evaluation);
+            if (evaluation != null && evaluation.shouldShowManualPrompt
+                    && (activeUpdateDialog == null || !activeUpdateDialog.isShowing())) {
+                activeUpdateDialog = new com.vinaykpro.ludoking.update.AppUpdateDialog(this, mgr, evaluation);
+                activeUpdateDialog.show();
+            }
+        });
     }
 
     private void attachCheatCheckboxListener(android.widget.CheckBox cb, String color) {

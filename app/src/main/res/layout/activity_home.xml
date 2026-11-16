@@ -2382,6 +2382,84 @@
                             app:layout_constraintTop_toTopOf="parent" />
                     </androidx.constraintlayout.widget.ConstraintLayout>
 
+                    <!-- APP UPDATES SECTION -->
+                    <LinearLayout
+                        android:id="@+id/op_app_updates_section"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/audioitembg"
+                        android:orientation="vertical"
+                        android:padding="8dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="@font/rcbold"
+                                    android:text="APP UPDATES"
+                                    android:textColor="#F5B201"
+                                    android:textSize="13sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/update_installed_version_text"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:fontFamily="@font/rcnormal"
+                                    android:text="Installed: v1.0 (1)"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="11sp" />
+
+                                <TextView
+                                    android:id="@+id/update_latest_version_text"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="@font/rcnormal"
+                                    android:text="Latest: Not checked"
+                                    android:textColor="#DDDDDD"
+                                    android:textSize="11sp" />
+                            </LinearLayout>
+
+                            <Button
+                                android:id="@+id/check_updates_btn"
+                                android:layout_width="wrap_content"
+                                android:layout_height="44dp"
+                                android:backgroundTint="#F5B201"
+                                android:fontFamily="@font/rcbold"
+                                android:minWidth="108dp"
+                                android:paddingStart="10dp"
+                                android:paddingEnd="10dp"
+                                android:text="Check Updates"
+                                android:textColor="#101828"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/update_status_text"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:fontFamily="@font/rcnormal"
+                            android:text="Last check: Never checked"
+                            android:textColor="#BCC8D4"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+
 
                     <!-- PLAYER CHEATING SELECTION SECTION -->
                     <LinearLayout

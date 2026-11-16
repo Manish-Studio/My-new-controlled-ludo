@@ -272,36 +272,8 @@ public class MainActivity extends AppCompatActivity {
             this.readyToPick.setVisibility(View.INVISIBLE);
             this.piece.setVisibility(View.VISIBLE);
             this.endPosition = startPosition!=0?startPosition-2:50;
-            this.piece.setOnClickListener(view -> {
-                com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr = com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
-                if (!isActivePlayerBot()
-                        && cheatMgr.isAbilityActiveForPlayer(currentPlayerColor)
-                        && d != null
-                        && (d.isDiceClickable || isDiceMovableExtraChance)
-                        && !d.isRolling) {
-                    // Secret gesture: Any token single tap locks 5 (no token moves, dice rolls when tapped next)
-                    cheatMgr.onTokenTappedForFive(currentPlayerColor);
-                    return;
-                }
-                if (!isBotPiece) {
-                    if (isAlive && isClickable && currentPlayerColor.equals(colour)) {
-                        diceValue = currentPlayerDice;
-                        currentPlayerDice = -1;
-                        for (Piece p : getPiecesByColor(colour)) {
-                            p.inactiveState();
-                        }
-                        checkAdjustments(currBlock);
-                        move(diceValue);
-                        //Toast.makeText(MainActivity.this, x+"", Toast.LENGTH_SHORT).show();
-                    } else if (!isAlive && currentPlayerColor.equals(colour) && currentPlayerDice == 6) {
-                        currentPlayerDice = -1;
-                        for (Piece p : getPiecesByColor(colour)) {
-                            p.inactiveState();
-                        }
-                        makeAlive();
-                    }
-                }
-            });
+            this.piece.setClickable(false);
+            this.piece.setFocusable(false);
             if(!normalPiece) {
                 pieceIcon.setScaleX(0.8f);pieceIcon.setScaleY(0.8f);
                 pieceIcon.setImageDrawable(getStylishIconDrawableByColor(this.colour));
@@ -358,7 +330,6 @@ public class MainActivity extends AppCompatActivity {
             globalHandler.postDelayed(() -> {
                 isDiceMovableExtraChance = true;
                 if(!isBotPiece) { hintArrow.setVisibility(View.VISIBLE); }
-                checkAdjustments(currBlock);
                 if(currBlock>=24 && currBlock<=51) {
                     piece.setElevation(51-currBlock);
                 } else if(currBlock>=64 && currBlock<=69) {
@@ -366,6 +337,7 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     piece.setElevation(currBlock);
                 }
+                checkAdjustments(currBlock);
             },400);
             globalHandler.postDelayed(new Runnable() {
                 @Override
@@ -420,15 +392,41 @@ public class MainActivity extends AppCompatActivity {
             //piece.animate().translationX(defX).translationY(defY).setDuration(400).start();
         }
 
+        boolean isEligibleForCurrentTurn() {
+            if (isBotPiece || currentPlayerColor == null || !currentPlayerColor.equals(colour)) {
+                return false;
+            }
+            return (isAlive && isClickable && currentPlayerDice > 0)
+                    || (!isAlive && currentPlayerDice == 6);
+        }
+
+        void executeHumanTapAction() {
+            if (isBotPiece || currentPlayerColor == null || !currentPlayerColor.equals(colour)) {
+                return;
+            }
+            if (isAlive && isClickable && currentPlayerDice > 0) {
+                diceValue = currentPlayerDice;
+                currentPlayerDice = -1;
+                for (Piece p : getPiecesByColor(colour)) {
+                    p.inactiveState();
+                }
+                checkAdjustments(currBlock);
+                move(diceValue);
+            } else if (!isAlive && currentPlayerDice == 6) {
+                currentPlayerDice = -1;
+                for (Piece p : getPiecesByColor(colour)) {
+                    p.inactiveState();
+                }
+                makeAlive();
+            }
+        }
+
         void activeState()
         {
             isClickable = true;
             rotateAnimator.start();
             readyToPick.setVisibility(View.VISIBLE);
-            if(piece.getScaleX()<1.0f) {
-                piece.setScaleX(0.95f);
-                piece.setScaleY(0.95f);
-            } else {
+            if(currBlock == -1) {
                 piece.setScaleX(1.0f);
                 piece.setScaleY(1.0f);
             }
@@ -1049,88 +1047,69 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkAdjustments(int targetBox) {
+        if (targetBox < 0 || x == null || y == null || targetBox >= x.length || targetBox >= y.length) {
+            return;
+        }
         int xi = currentPlayerIndex;
-        if(currentWinnerPlayerIndex!=-1) {
+        if (currentWinnerPlayerIndex != -1) {
             xi = currentWinnerPlayerIndex;
             currentWinnerPlayerIndex = -1;
         }
         List<Piece> pairs = new ArrayList<>();
         boolean horizontal = (targetBox >= 0 && targetBox <= 4) || (targetBox >= 18 && targetBox <= 30) || (targetBox >= 44 && targetBox <= 51) || (targetBox >= 52 && targetBox <= 57) || (targetBox >= 64 && targetBox <= 69);
-        for(int i = 0; i<players.size(); i++)
-        {
-            if(xi>players.size()-1) { continue; }
+        for (int i = 0; i < players.size(); i++) {
+            if (xi > players.size() - 1) {
+                continue;
+            }
             String colour = players.get(xi).getColor();
             List<Piece> pieces = getPiecesByColor(colour);
-            if(horizontal)
-                {
-                    for (int j = 3; j >= 0; j--) {
-                        Piece p = pieces.get(j);
-                        if (p.currBlock == targetBox && targetBox != -1 && p.isAlive) {
-                            pairs.add(p);
-                        }
-                    }
-                } else {
-                    for(Piece p : pieces) {
-                        if (p.currBlock == targetBox && targetBox != -1 && p.isAlive) {
-                            pairs.add(p);
-                        }
-                    }
-                }
-
-            if(xi>=players.size()-1) { xi = 0; } else { xi++; }
-        }
-        int n = pairs.size();
-        if(n>1) {
-            if(horizontal) {
-                float extra = 4 * displayMetrics.density, yextra = 17 * displayMetrics.density;
-                float xt = x[targetBox] + pushXForPieces, yt = y[targetBox];
-                float scale = 100f / ((n) * 30 + 75);
-                float gap = 100f - scale;
-                //Toast.makeText(this, scale + "", Toast.LENGTH_SHORT).show();
-                float space = blockSize - (pieceWidth * scale * 0.35f * n + pieceWidth * scale * 0.65f) / 2;
-                if (space <= 0) {
-                    space = 0;
-                }
-                space = 0;
-                //scale = 0.70f;
-                for (int i = 0; i < n; i++) {
-                    Piece p = pairs.get(i);
-                    ConstraintLayout piece = p.piece;
-                    piece.setScaleX(scale);
-                    piece.setScaleY(scale);
-                    piece.setTranslationX(xt - ((blockSize - (pieceWidth * scale)) / 2) + ((pieceWidth * scale * 0.30f) * i) - (extra * scale * (n / 2)) + space);
-                    if(normalPiece) { piece.setTranslationY(yt - pieceHeight / 2); } else { piece.setTranslationY(yt - (pieceHeight/2) / 2); }
-                }
-            } else {
-                float elevation = pairs.get(0).piece.getElevation();
-                float extra = 4 * displayMetrics.density, yextra = 8 * displayMetrics.density;
-                float xt = x[targetBox] + pushXForPieces, yt = y[targetBox]-pushYForPieces;
-                float scale = 100f / ((n) * 30 + 75);
-                float gap = 100f - scale;
-                //Toast.makeText(this, scale + "", Toast.LENGTH_SHORT).show();
-                float space = blockSize - (pieceWidth * scale * 0.35f * n + pieceWidth * scale * 0.65f) / 2;
-                if (space <= 0) {
-                    space = 0;
-                }
-                space = 0;
-                //scale = 0.70f;
-                for (int i = 0; i < n; i++) {
-                    Piece p = pairs.get(i);
-                    ConstraintLayout piece = p.piece;
-                    piece.setElevation(elevation++);
-                    piece.setScaleX(scale);
-                    piece.setScaleY(scale);
-                    piece.setTranslationX(xt);
-                    if(normalPiece) {piece.setTranslationY(yt - ((blockSize - (pieceWidth * scale)) / 2) + ((pieceWidth * scale * 0.30f) * i)); }
-                    else { piece.setTranslationY((yt - ((blockSize - (pieceWidth * scale)) / 2) + ((pieceWidth * scale * 0.30f) * i))-(pieceWidth * scale * 0.30f)); }
+            for (Piece p : pieces) {
+                if (p.currBlock == targetBox && p.isAlive) {
+                    pairs.add(p);
                 }
             }
-        } else if(pairs.size()==1) {
-            Piece p = pairs.get(0);
-            p.piece.setScaleX(1.0f);
-            p.piece.setScaleY(1.0f);
-            p.piece.setTranslationX(x[targetBox]+pushXForPieces);
-            p.piece.setTranslationY(y[targetBox]-pushYForPieces);
+            if (xi >= players.size() - 1) {
+                xi = 0;
+            } else {
+                xi++;
+            }
+        }
+        if (pairs.isEmpty()) {
+            return;
+        }
+        List<com.vinaykpro.ludoking.board.TokenOverlapLayoutHelper.TokenState> tokenStates = new ArrayList<>(pairs.size());
+        for (int i = 0; i < pairs.size(); i++) {
+            Piece p = pairs.get(i);
+            boolean isActiveColor = currentPlayerColor != null && currentPlayerColor.equals(p.colour);
+            boolean isEligible = p.isEligibleForCurrentTurn();
+            tokenStates.add(new com.vinaykpro.ludoking.board.TokenOverlapLayoutHelper.TokenState(
+                    i, p.colour, isActiveColor, isEligible));
+        }
+        float baseTx = x[targetBox] + pushXForPieces;
+        float baseTy = y[targetBox] - pushYForPieces;
+        List<com.vinaykpro.ludoking.board.TokenOverlapLayoutHelper.SlotPlacement> placements =
+                com.vinaykpro.ludoking.board.TokenOverlapLayoutHelper.computeCellPlacements(
+                        tokenStates, targetBox, baseTx, baseTy, blockSize, horizontal);
+        for (com.vinaykpro.ludoking.board.TokenOverlapLayoutHelper.SlotPlacement placement : placements) {
+            Piece p = pairs.get(placement.tokenId);
+            p.piece.setScaleX(placement.scale);
+            p.piece.setScaleY(placement.scale);
+            p.piece.setTranslationX(placement.translationX);
+            p.piece.setTranslationY(placement.translationY);
+            p.piece.setElevation(placement.elevation);
+        }
+    }
+
+    private void refreshOverlapLayoutsForColor(String color) {
+        if (color == null) return;
+        java.util.Set<Integer> blocksToRefresh = new java.util.HashSet<>();
+        for (Piece p : getPiecesByColor(color)) {
+            if (p.isAlive && p.currBlock >= 0) {
+                blocksToRefresh.add(p.currBlock);
+            }
+        }
+        for (int block : blocksToRefresh) {
+            checkAdjustments(block);
         }
     }
 
@@ -1658,6 +1637,7 @@ public class MainActivity extends AppCompatActivity {
                         ++chances;
                     }
                 }
+                refreshOverlapLayoutsForColor(currentPlayerColor);
                 if (ch == 6) {
                     // When rolling a 6: if an alive token can move AND unopened tokens exist in home,
                     // or multiple distinct alive tokens can move, do not auto-move: give the player the choice!
@@ -2669,7 +2649,189 @@ public class MainActivity extends AppCompatActivity {
         redHomeBlink.setLayoutParams(lp);
         lp.addRule(RelativeLayout.ALIGN_TOP,R.id.imageView); lp.addRule(RelativeLayout.ALIGN_LEFT,R.id.imageView);
 
+        setupBoardTokenTouchHandler();
         }
+
+    private boolean isBlockingOverlayVisible() {
+        return (quitgamelayout != null && quitgamelayout.getVisibility() == View.VISIBLE)
+                || (ingamermplayout != null && ingamermplayout.getVisibility() == View.VISIBLE)
+                || (confirmrmplayout != null && confirmrmplayout.getVisibility() == View.VISIBLE)
+                || (congratulationslayout != null && congratulationslayout.getVisibility() == View.VISIBLE)
+                || (ingamemenuitemslayout != null && ingamemenuitemslayout.getVisibility() == View.VISIBLE);
+    }
+
+    private List<Piece> collectVisibleGamePieces() {
+        List<Piece> all = new ArrayList<>();
+        if (rp != null) all.addAll(rp);
+        if (gp != null) all.addAll(gp);
+        if (bp != null) all.addAll(bp);
+        if (yp != null) all.addAll(yp);
+        return all;
+    }
+
+    private com.vinaykpro.ludoking.board.TokenTouchResolver.ResolutionResult evaluateBoardTouch(
+            float boardX,
+            float boardY,
+            List<Piece> visiblePiecesOut
+    ) {
+        visiblePiecesOut.clear();
+        float minHitSize = Math.max(44f * displayMetrics.density, blockSize * 1.15f);
+        List<com.vinaykpro.ludoking.board.TokenTouchResolver.TokenCandidate> candidates = new ArrayList<>();
+        java.util.Set<Integer> occupiedCells = new java.util.HashSet<>();
+        for (Piece p : collectVisibleGamePieces()) {
+            if (p.piece == null || p.piece.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            int idx = visiblePiecesOut.size();
+            visiblePiecesOut.add(p);
+            float viewW = p.piece.getWidth() > 0 ? p.piece.getWidth() : (34f * displayMetrics.density);
+            float viewH = p.piece.getHeight() > 0 ? p.piece.getHeight() : (54f * displayMetrics.density);
+            float visualW = viewW * Math.abs(p.piece.getScaleX());
+            float visualH = viewH * Math.abs(p.piece.getScaleY());
+            float centerX = p.piece.getLeft() + p.piece.getTranslationX() + (viewW * 0.5f);
+            float centerY = p.piece.getTop() + p.piece.getTranslationY() + (viewH * 0.5f);
+            float[] hitBounds = com.vinaykpro.ludoking.board.TokenTouchResolver.computeExpandedHitBounds(
+                    centerX, centerY, visualW, visualH, minHitSize, minHitSize);
+            boolean belongsToActiveHuman = !isActivePlayerBot()
+                    && currentPlayerColor != null
+                    && currentPlayerColor.equals(p.colour);
+            if (p.isAlive && p.currBlock >= 0) {
+                occupiedCells.add(p.currBlock);
+            }
+            candidates.add(new com.vinaykpro.ludoking.board.TokenTouchResolver.TokenCandidate(
+                    idx,
+                    p.colour,
+                    p.currBlock,
+                    p.isAlive,
+                    p.isEligibleForCurrentTurn(),
+                    belongsToActiveHuman,
+                    centerX,
+                    centerY,
+                    hitBounds[0],
+                    hitBounds[1],
+                    hitBounds[2],
+                    hitBounds[3],
+                    p.piece.getElevation()
+            ));
+        }
+
+        float cellPad = Math.max(8f * displayMetrics.density, blockSize * 0.2f);
+        List<com.vinaykpro.ludoking.board.TokenTouchResolver.CellBounds> cellBoundsList = new ArrayList<>();
+        for (int cell : occupiedCells) {
+            if (cell >= 0 && x != null && y != null && cell < x.length && cell < y.length) {
+                cellBoundsList.add(new com.vinaykpro.ludoking.board.TokenTouchResolver.CellBounds(
+                        cell,
+                        x[cell] - cellPad,
+                        y[cell] - cellPad,
+                        x[cell] + blockSize + cellPad,
+                        y[cell] + blockSize + cellPad
+                ));
+            }
+        }
+
+        com.vinaykpro.ludoking.cheating.PlayerCheatingManager cheatMgr =
+                com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance();
+        boolean cheatFiveReady = !isActivePlayerBot()
+                && cheatMgr.isAbilityActiveForPlayer(currentPlayerColor)
+                && d != null
+                && (d.isDiceClickable || isDiceMovableExtraChance)
+                && !d.isRolling;
+
+        return com.vinaykpro.ludoking.board.TokenTouchResolver.resolveTap(
+                boardX, boardY, candidates, cellBoundsList, cheatFiveReady);
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private void setupBoardTokenTouchHandler() {
+        final View boardContainer = findViewById(R.id.relativeLayout);
+        if (completeBackground == null || boardContainer == null) {
+            return;
+        }
+        final int touchSlop = android.view.ViewConfiguration.get(this).getScaledTouchSlop();
+        final float[] downCoords = new float[] { -1f, -1f };
+        final int[] activePointerId = new int[] { MotionEvent.INVALID_POINTER_ID };
+        final boolean[] trackingBoardTap = new boolean[] { false };
+
+        completeBackground.setOnTouchListener((v, event) -> {
+            if (isBlockingOverlayVisible()) {
+                trackingBoardTap[0] = false;
+                activePointerId[0] = MotionEvent.INVALID_POINTER_ID;
+                return false;
+            }
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN: {
+                    activePointerId[0] = event.getPointerId(0);
+                    downCoords[0] = event.getX();
+                    downCoords[1] = event.getY();
+                    float bx = event.getX() - boardContainer.getLeft();
+                    float by = event.getY() - boardContainer.getTop();
+                    List<Piece> visiblePieces = new ArrayList<>();
+                    com.vinaykpro.ludoking.board.TokenTouchResolver.ResolutionResult preview =
+                            evaluateBoardTouch(bx, by, visiblePieces);
+                    trackingBoardTap[0] = preview.actionType != com.vinaykpro.ludoking.board.TokenTouchResolver.ActionType.NONE;
+                    return trackingBoardTap[0];
+                }
+                case MotionEvent.ACTION_MOVE: {
+                    if (!trackingBoardTap[0]) {
+                        return false;
+                    }
+                    int pointerIdx = event.findPointerIndex(activePointerId[0]);
+                    if (pointerIdx < 0) {
+                        trackingBoardTap[0] = false;
+                        return false;
+                    }
+                    float dx = event.getX(pointerIdx) - downCoords[0];
+                    float dy = event.getY(pointerIdx) - downCoords[1];
+                    if ((dx * dx + dy * dy) > (touchSlop * touchSlop)) {
+                        trackingBoardTap[0] = false;
+                    }
+                    return true;
+                }
+                case MotionEvent.ACTION_UP: {
+                    if (!trackingBoardTap[0]) {
+                        activePointerId[0] = MotionEvent.INVALID_POINTER_ID;
+                        return false;
+                    }
+                    trackingBoardTap[0] = false;
+                    int pointerIdx = event.findPointerIndex(activePointerId[0]);
+                    activePointerId[0] = MotionEvent.INVALID_POINTER_ID;
+                    float upX = pointerIdx >= 0 ? event.getX(pointerIdx) : event.getX();
+                    float upY = pointerIdx >= 0 ? event.getY(pointerIdx) : event.getY();
+                    float dx = upX - downCoords[0];
+                    float dy = upY - downCoords[1];
+                    if ((dx * dx + dy * dy) > (touchSlop * touchSlop)) {
+                        return true;
+                    }
+
+                    float bx = upX - boardContainer.getLeft();
+                    float by = upY - boardContainer.getTop();
+                    List<Piece> visiblePieces = new ArrayList<>();
+                    com.vinaykpro.ludoking.board.TokenTouchResolver.ResolutionResult result =
+                            evaluateBoardTouch(bx, by, visiblePieces);
+                    if (result.selectedToken == null) {
+                        return true;
+                    }
+                    if (result.actionType == com.vinaykpro.ludoking.board.TokenTouchResolver.ActionType.CHEAT_LOCK_FIVE) {
+                        com.vinaykpro.ludoking.cheating.PlayerCheatingManager.getInstance()
+                                .onTokenTappedForFive(currentPlayerColor);
+                    } else if (result.actionType == com.vinaykpro.ludoking.board.TokenTouchResolver.ActionType.SELECT_TOKEN_TO_MOVE) {
+                        int tokenIdx = result.selectedToken.id;
+                        if (tokenIdx >= 0 && tokenIdx < visiblePieces.size()) {
+                            visiblePieces.get(tokenIdx).executeHumanTapAction();
+                        }
+                    }
+                    return true;
+                }
+                case MotionEvent.ACTION_CANCEL:
+                case MotionEvent.ACTION_POINTER_UP: {
+                    trackingBoardTap[0] = false;
+                    activePointerId[0] = MotionEvent.INVALID_POINTER_ID;
+                    return false;
+                }
+            }
+            return false;
+        });
+    }
 
 
     private void stopEverything() {

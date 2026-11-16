@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/rounded_network_item_bg"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/updateDialogTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/rcbold"
+        android:text="Update Available"
+        android:textColor="#FFD700"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/updateDialogVersionBadge"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:fontFamily="@font/rcbold"
+        android:text="Installed: 1.0 (1)  ->  Latest: 1.1 (2)"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/updateDialogDateText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:fontFamily="@font/rcnormal"
+        android:text=""
+        android:textColor="#AAB8C5"
+        android:textSize="11.5sp" />
+
+    <TextView
+        android:id="@+id/updateDialogMandatoryBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="#421C1C"
+        android:fontFamily="@font/rcbold"
+        android:padding="8dp"
+        android:text="This version is no longer supported. Update is required to continue."
+        android:textColor="#FFB4B4"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/updateDialogNotesHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:fontFamily="@font/rcbold"
+        android:text="Release Notes"
+        android:textColor="#F5B201"
+        android:textSize="12.5sp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:maxHeight="140dp">
+
+        <TextView
+            android:id="@+id/updateDialogReleaseNotes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/rcnormal"
+            android:lineSpacingExtra="2dp"
+            android:textColor="#E2E8F0"
+            android:textSize="12.5sp" />
+    </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/updateDialogProgressContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:id="@+id/updateDialogProgressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="#F5B201" />
+
+        <TextView
+            android:id="@+id/updateDialogProgressText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="@font/rcnormal"
+            android:text="Preparing download..."
+            android:textColor="#DDDDDD"
+            android:textSize="11.5sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/updateDialogErrorText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:fontFamily="@font/rcnormal"
+        android:textColor="#FF6B6B"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/updateDialogLaterBtn"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginEnd="8dp"
+            android:fontFamily="@font/rcbold"
+            android:text="Later"
+            android:textColor="#CCCCCC"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/updateDialogUpdateBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:backgroundTint="#F5B201"
+            android:fontFamily="@font/rcbold"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:text="Update"
+            android:textColor="#101828"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>
