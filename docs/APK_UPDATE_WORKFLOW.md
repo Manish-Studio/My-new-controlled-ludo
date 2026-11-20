@@ -1,74 +1,61 @@
 # Centralized GitHub Releases APK Update Workflow
 
-This project uses a single public HTTPS JSON manifest (`updates/version-manifest.json`) to distribute APK updates via GitHub Releases for both **Ludo King** (`ludo_king`) and the separate **Ludo Controller** (`ludo_controller`) Android app without embedding any GitHub tokens, secrets, or credentials.
+- **Repository Owner**: `Manish-Studio`
+- **Repository Name**: `My-new-controlled-ludo`
+- **Default Branch**: `main`
+- **Configured Manifest URL**:
+  `https://raw.githubusercontent.com/Manish-Studio/My-new-controlled-ludo/main/updates/version-manifest.json`
+- **Ludo App Package Name (`applicationId`)**: `com.aistudio.ludoking.kxpvrz`
+
+This project uses the centralized HTTPS JSON manifest at `updates/version-manifest.json` to distribute APK updates via GitHub Releases for both **Ludo King** (`ludo_king`) and the separate **Ludo Controller** (`ludo_controller`) Android app without embedding any GitHub tokens, passwords, or signing credentials.
 
 ---
 
-## 1. Centralized Manifest Format (`updates/version-manifest.json`)
+## 1. Current Repository & Signing Safety Status
 
-```json
-{
-  "manifestVersion": 1,
-  "generatedAt": "2026-01-01T00:00:00Z",
-  "apps": {
-    "ludo_king": {
-      "appId": "ludo_king",
-      "packageName": "com.aistudio.ludoking.kxpvrz",
-      "displayName": "Ludo King",
-      "latestVersionName": "1.1.0",
-      "latestVersionCode": 2,
-      "minSupportedVersionCode": 1,
-      "apkUrl": "https://github.com/<OWNER>/<REPO>/releases/download/ludo-v1.1.0/ludo-king-v1.1.0-release.apk",
-      "sha256": "<64-HEX-CHAR-SHA256>",
-      "releaseNotes": "Bug fixes and improvements.",
-      "releaseDate": "2026-02-01",
-      "mandatory": false
-    },
-    "ludo_controller": {
-      "appId": "ludo_controller",
-      "packageName": "<CONTROLLER_PACKAGE_NAME>",
-      "displayName": "Ludo Controller",
-      "latestVersionName": "1.1.0",
-      "latestVersionCode": 2,
-      "minSupportedVersionCode": 1,
-      "apkUrl": "https://github.com/<OWNER>/<REPO>/releases/download/controller-v1.1.0/ludo-controller-v1.1.0-release.apk",
-      "sha256": "<64-HEX-CHAR-SHA256>",
-      "releaseNotes": "Controller improvements.",
-      "releaseDate": "2026-02-01",
-      "mandatory": false
-    }
-  }
-}
-```
-
-### Key Rules
-- `apkUrl` **must** use `https://`. Non-HTTPS URLs are rejected.
-- `packageName` **must** match the app's `applicationId` (`com.aistudio.ludoking.kxpvrz` for this Ludo app). The updater refuses any entry whose `packageName` does not match the installed app, preventing cross-app installation.
-- `latestVersionCode` is compared monotonically (`latestVersionCode > BuildConfig.VERSION_CODE`).
-- An update becomes **Mandatory** whenever `mandatory == true` OR `installedVersionCode < minSupportedVersionCode`.
-- `sha256` must be the exact 64-character hexadecimal SHA-256 checksum of the release `.apk` file. Mismatched downloads are rejected and deleted automatically before installation.
+- **Gradle Version & Signing Config (`app/build.gradle.kts`)**:
+  - `applicationId`: `com.aistudio.ludoking.kxpvrz`
+  - Current `versionCode`: `1`, `versionName`: `"1.0"`
+  - `release` signing config expects `KEYSTORE_PATH` (defaulting to `${rootDir}/my-upload-key.jks`), `STORE_PASSWORD`, `keyAlias = "upload"`, and `KEY_PASSWORD`.
+- **GitHub Actions Workflows (`.github/workflows/build-apk.yml` & `.github/workflows/publish-apk.yml`)**:
+  - Both existing workflows currently build **debug APKs only** (`assembleDebug`) signed with temporary/debug keys (`debug.keystore` / `androiddebugkey`), **not** production-signed release APKs.
+  - **Do NOT point `updates/version-manifest.json` at those debug-build GitHub Releases** for production updates. Temporary debug certificates are unstable and incompatible with release-signed installs.
+- **No Update Marked Available Yet**:
+  - `updates/version-manifest.json` currently keeps `latestVersionCode: 1` (matching installed `versionCode = 1`) and placeholder `apkUrl` / `sha256` fields until a verified, consistently signed release APK is published.
 
 ---
 
-## 2. Hosting & Configuring the Manifest URL
+## 2. Fields to Fill After Publishing a Signed Release APK
 
-1. Host `updates/version-manifest.json` on a public HTTPS endpoint such as:
-   - Raw GitHub URL: `https://raw.githubusercontent.com/<OWNER>/<REPO>/main/updates/version-manifest.json`
-   - Or GitHub Pages / a stable latest-release manifest URL.
-2. Open `app/src/main/res/values/strings.xml` and set `apk_update_manifest_url` to your public HTTPS manifest URL:
-   ```xml
-   <string name="apk_update_manifest_url">https://raw.githubusercontent.com/&lt;OWNER&gt;/&lt;REPO&gt;/main/updates/version-manifest.json</string>
+In `updates/version-manifest.json`, update the `ludo_king` entry (and `ludo_controller` when releasing Controller) **only after** uploading a real signed release `.apk` to GitHub Releases:
+
+1. `latestVersionName`: Matches `versionName` in `app/build.gradle.kts` (e.g. `"1.1.0"`).
+2. `latestVersionCode`: Strictly greater integer than the previous release (`versionCode` in `app/build.gradle.kts`, e.g. `2`).
+3. `minSupportedVersionCode`: Lowest `versionCode` allowed to continue without a forced update (e.g. `1` or `2`).
+4. `apkUrl`: Exact HTTPS GitHub Release asset URL, e.g.:
+   `https://github.com/Manish-Studio/My-new-controlled-ludo/releases/download/<RELEASE_TAG>/<SIGNED_RELEASE_APK>`
+5. `sha256`: Exact 64-character lowercase hexadecimal SHA-256 checksum of that uploaded `.apk`.
+6. `releaseNotes`: Human-readable changelog shown in `AppUpdateDialog`.
+7. `releaseDate`: ISO date (`YYYY-MM-DD`).
+8. `mandatory`: `true` if users must update immediately, otherwise `false` (note: any user with `installedVersionCode < minSupportedVersionCode` is automatically treated as mandatory).
+
+> **Safety Enforcement**: `UpdateEvaluator` rejects any update if `apkUrl` is not valid `https://`, if `sha256` is not a valid 64-hex string, or if `packageName` does not match `com.aistudio.ludoking.kxpvrz`.
+
+---
+
+## 3. Release & Verification Steps Before Publishing
+
+1. **Increment Version** in `app/build.gradle.kts` (`versionCode` and `versionName`).
+2. **Build Signed Release APK** using your consistent upload keystore (`KEYSTORE_PATH`, `STORE_PASSWORD`, `KEY_PASSWORD`, alias `upload`)—either locally or via a dedicated release CI workflow backed by encrypted GitHub Actions Secrets (never commit `.jks` or passwords to git).
+3. **Verify Signing Certificate Match**:
+   Confirm the new release APK's SHA-256 signing certificate fingerprint matches the currently installed app's signing certificate before distributing:
+   ```bash
+   apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+   # Or:
+   keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk
    ```
-
----
-
-## 3. Releasing a New Version
-
-1. **Increment version** in `app/build.gradle.kts`:
-   - Increase `versionCode` (e.g., `1` -> `2`)
-   - Update `versionName` (e.g., `"1.0"` -> `"1.1.0"`)
-2. **Build signed release APK** using the **same upload/release keystore** (`KEYSTORE_PATH` / `upload` alias).
-3. **Compute APK SHA-256 checksum**:
+   Compare the SHA-256 certificate digest against the existing installed APK (or `keytool -list -v -keystore <your-upload-keystore> -alias upload`). Android will reject any in-place update whose certificate differs.
+4. **Compute APK SHA-256 Checksum**:
    - Linux / macOS:
      ```bash
      sha256sum app/build/outputs/apk/release/app-release.apk
@@ -77,32 +64,27 @@ This project uses a single public HTTPS JSON manifest (`updates/version-manifest
      ```powershell
      Get-FileHash app\build\outputs\apk\release\app-release.apk -Algorithm SHA256
      ```
-4. **Create a GitHub Release** and upload the signed `.apk` asset. Copy its direct `https://github.com/.../releases/download/.../*.apk` asset URL.
-5. **Update `updates/version-manifest.json`** (`latestVersionName`, `latestVersionCode`, `minSupportedVersionCode`, `apkUrl`, `sha256`, `releaseNotes`, `releaseDate`, `mandatory`) and push to your repository branch.
+5. **Upload to GitHub Releases**:
+   Create a release tag in `Manish-Studio/My-new-controlled-ludo`, attach the verified signed release `.apk`, and copy its direct `https://github.com/Manish-Studio/My-new-controlled-ludo/releases/download/.../*.apk` URL.
+6. **Commit Updated `updates/version-manifest.json`** to `main`:
+   Once pushed to `main`, Ludo King reads it from:
+   `https://raw.githubusercontent.com/Manish-Studio/My-new-controlled-ludo/main/updates/version-manifest.json`.
 
 ---
 
-## 4. Signing Key Preservation (Critical)
+## 4. Preserving Local User Data
 
-Android enforces **identical signing certificates** for in-place APK upgrades:
-- Always sign every released APK with the exact same keystore (`KEYSTORE_PATH` / `STORE_PASSWORD` / `KEY_PASSWORD`, or consistent debug keystore during local QA).
-- Installing a release-signed APK over a debug-signed APK (or vice versa) will fail in the Android Package Installer.
-- Keep keystore files and passwords **outside** the repository and never embed them in `version-manifest.json` or source code.
-
----
-
-## 5. Preserving Local User Data
-
-Updating via Android's standard `FileProvider` package installer performs an in-place upgrade and preserves:
+Updating via Android's `FileProvider` package installer performs an in-place upgrade and preserves:
 - `SharedPreferences` (`"LudoModUser"` including Player Cheating Selection unlock state, game-duration counters, stats, sound/music, and network preferences).
 
 ---
 
-## 6. Integrating the Separate Ludo Controller App
+## 5. Integrating the Separate Ludo Controller App
 
-Because the Ludo Controller app lives in its own repository/project:
-1. Copy the `com.vinaykpro.ludoking.update` package (or keep its schema contract identical).
+Because the Ludo Controller app lives in its own codebase:
+1. Reuse the `com.vinaykpro.ludoking.update` package (or matching JSON schema contract).
 2. Add `REQUEST_INSTALL_PACKAGES` and a matching `FileProvider` (`${applicationId}.fileprovider` + `res/xml/update_file_paths.xml`) in Controller's `AndroidManifest.xml`.
-3. Pass Controller's `BuildConfig.APPLICATION_ID` as `expectedPackageName` and `"ludo_controller"` as preferred `appId`.
-4. Point Controller to the **same** `apk_update_manifest_url` — the updater automatically resolves only the `ludo_controller` entry matching Controller's `packageName`.
-5. Keep Controller's own signing key consistent across all Controller GitHub Releases.
+3. Configure Controller's `apk_update_manifest_url` to the exact same URL:
+   `https://raw.githubusercontent.com/Manish-Studio/My-new-controlled-ludo/main/updates/version-manifest.json`
+4. Pass Controller's `BuildConfig.APPLICATION_ID` as `expectedPackageName` and `"ludo_controller"` as preferred `appId`, and replace `<CONTROLLER_PACKAGE_NAME>` in `updates/version-manifest.json` with Controller's real `applicationId`.
+5. Sign all Controller releases with Controller's own consistent release keystore.

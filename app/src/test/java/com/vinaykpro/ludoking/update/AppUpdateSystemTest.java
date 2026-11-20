@@ -203,11 +203,34 @@ public class AppUpdateSystemTest {
     }
 
     @Test
-    public void placeholderManifestUrl_rejectedFromAutoAndManualFetch() {
+    public void configuredManifestUrl_andSafeBaselineManifestHandling() throws Exception {
         assertFalse(UpdateManifestParser.isConfiguredManifestUrl("https://raw.githubusercontent.com/<OWNER>/<REPO>/main/updates/version-manifest.json"));
         assertFalse(UpdateManifestParser.isConfiguredManifestUrl(""));
         assertFalse(UpdateManifestParser.isConfiguredManifestUrl("http://example.com/manifest.json"));
-        assertTrue(UpdateManifestParser.isConfiguredManifestUrl("https://raw.githubusercontent.com/acme/ludo/main/updates/version-manifest.json"));
+        assertTrue(UpdateManifestParser.isConfiguredManifestUrl(
+                "https://raw.githubusercontent.com/Manish-Studio/My-new-controlled-ludo/main/updates/version-manifest.json"
+        ));
+
+        // Baseline manifest with versionCode 1 and unreleased placeholders evaluates cleanly as UP_TO_DATE
+        String baseline = buildManifestJson(
+                1, 1, false,
+                "https://github.com/Manish-Studio/My-new-controlled-ludo/releases/download/<RELEASE_TAG>/<SIGNED_RELEASE_APK>",
+                "<64-HEX-CHAR-SHA256-OF-SIGNED-LUDO-RELEASE-APK>"
+        );
+        UpdateManifest parsedBaseline = UpdateManifestParser.parse(baseline);
+        UpdateEvaluator.EvaluationResult baselineEval = UpdateEvaluator.evaluate(
+                parsedBaseline, LUDO_PKG, "ludo_king", 1, -1);
+        assertEquals(UpdateEvaluator.Status.UP_TO_DATE, baselineEval.status);
+
+        // Even if versionCode is bumped prematurely before replacing URL/SHA placeholders, UpdateEvaluator rejects it safely
+        String prematureBump = buildManifestJson(
+                2, 1, false,
+                "https://github.com/Manish-Studio/My-new-controlled-ludo/releases/download/<RELEASE_TAG>/<SIGNED_RELEASE_APK>",
+                "<64-HEX-CHAR-SHA256-OF-SIGNED-LUDO-RELEASE-APK>"
+        );
+        UpdateEvaluator.EvaluationResult prematureEval = UpdateEvaluator.evaluate(
+                UpdateManifestParser.parse(prematureBump), LUDO_PKG, "ludo_king", 1, -1);
+        assertEquals(UpdateEvaluator.Status.INVALID_ENTRY, prematureEval.status);
     }
 
     @Test

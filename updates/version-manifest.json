@@ -9,9 +9,9 @@
       "latestVersionName": "1.0",
       "latestVersionCode": 1,
       "minSupportedVersionCode": 1,
-      "apkUrl": "https://github.com/<OWNER>/<REPO>/releases/download/ludo-v1.0.0/ludo-king-v1.0.0-release.apk",
-      "sha256": "<64-HEX-CHAR-SHA256-OF-LUDO-APK>",
-      "releaseNotes": "Initial release baseline.",
+      "apkUrl": "https://github.com/Manish-Studio/My-new-controlled-ludo/releases/download/<RELEASE_TAG>/<SIGNED_RELEASE_APK>",
+      "sha256": "<64-HEX-CHAR-SHA256-OF-SIGNED-LUDO-RELEASE-APK>",
+      "releaseNotes": "Initial release baseline (no production update published yet).",
       "releaseDate": "2026-01-01",
       "mandatory": false
     },
@@ -22,8 +22,8 @@
       "latestVersionName": "1.0",
       "latestVersionCode": 1,
       "minSupportedVersionCode": 1,
-      "apkUrl": "https://github.com/<OWNER>/<REPO>/releases/download/controller-v1.0.0/ludo-controller-v1.0.0-release.apk",
-      "sha256": "<64-HEX-CHAR-SHA256-OF-CONTROLLER-APK>",
+      "apkUrl": "https://github.com/Manish-Studio/My-new-controlled-ludo/releases/download/<CONTROLLER_RELEASE_TAG>/<SIGNED_CONTROLLER_RELEASE_APK>",
+      "sha256": "<64-HEX-CHAR-SHA256-OF-SIGNED-CONTROLLER-RELEASE-APK>",
       "releaseNotes": "Initial Ludo Controller release baseline.",
       "releaseDate": "2026-01-01",
       "mandatory": false

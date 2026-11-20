@@ -1,6 +1,5 @@
 <resources>
     <string name="app_name">Ludo King</string>
     <string name="profilenote">*Your country name &amp; Flag will be shown to other players when you play online multiplayer</string>
-    <!-- Configure with your public HTTPS GitHub raw/releases manifest URL before releasing -->
-    <string name="apk_update_manifest_url" translatable="false">https://raw.githubusercontent.com/&lt;OWNER&gt;/&lt;REPO&gt;/main/updates/version-manifest.json</string>
+    <string name="apk_update_manifest_url" translatable="false">https://raw.githubusercontent.com/Manish-Studio/My-new-controlled-ludo/main/updates/version-manifest.json</string>
 </resources>
